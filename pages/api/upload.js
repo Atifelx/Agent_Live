@@ -11,8 +11,8 @@ const openai = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-// Using Nomic Embed Text for embeddings (768 dimensions)
-const EMBEDDING_MODEL = 'nomic-ai/nomic-embed-text-v1';
+// Using BAAI BGE Large En v1.5 for embeddings (1024 dimensions) to match Pinecone index
+const EMBEDDING_MODEL = 'baai/bge-large-en-v1.5';
 
 // Initialize Pinecone
 const initPinecone = async () => {

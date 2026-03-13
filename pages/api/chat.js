@@ -16,8 +16,8 @@ const openai = new OpenAI({
 
 // Using NVIDIA Nemotron 3 Super (free) as requested
 const CHAT_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
-// Using Nomic Embed Text for embeddings (768 dimensions)
-const EMBEDDING_MODEL = 'nomic-ai/nomic-embed-text-v1';
+// Using BAAI BGE Large En v1.5 for embeddings (1024 dimensions) to match Pinecone index
+const EMBEDDING_MODEL = 'baai/bge-large-en-v1.5';
 
 const initPinecone = async () => {
   const pinecone = new Pinecone({
