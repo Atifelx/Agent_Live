@@ -11,8 +11,8 @@ const openai = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-// Using BAAI BGE Large En v1.5 for embeddings (1024 dimensions) to match Pinecone index
-const EMBEDDING_MODEL = 'baai/bge-large-en-v1.5';
+// Using NVIDIA Llama Nemotron Embed VL 1B V2 (free) for embeddings (1024 dimensions)
+const EMBEDDING_MODEL = 'nvidia/llama-nemotron-embed-vl-1b-v2:free';
 
 // Initialize Pinecone
 const initPinecone = async () => {

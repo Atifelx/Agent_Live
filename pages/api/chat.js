@@ -16,8 +16,8 @@ const openai = new OpenAI({
 
 // Using NVIDIA Nemotron 3 Super (free) as requested
 const CHAT_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
-// Using BAAI BGE Large En v1.5 for embeddings (1024 dimensions) to match Pinecone index
-const EMBEDDING_MODEL = 'baai/bge-large-en-v1.5';
+// Using NVIDIA Llama Nemotron Embed VL 1B V2 (free) for embeddings (1024 dimensions)
+const EMBEDDING_MODEL = 'nvidia/llama-nemotron-embed-vl-1b-v2:free';
 
 const initPinecone = async () => {
   const pinecone = new Pinecone({
