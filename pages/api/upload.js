@@ -1,12 +1,18 @@
 // pages/api/upload.js
-// API route to handle document upload and vector storage
+// API route to handle document upload and vector storage using OpenRouter
 
+import OpenAI from 'openai';
 import { Pinecone } from '@pinecone-database/pinecone';
-import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitters';
-import { Document } from 'langchain/document';
-import pdfParse from 'pdf-parse';
-import mammoth from 'mammoth';
+import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
+
+// Initialize OpenRouter client for embeddings
+const openai = new OpenAI({
+  baseURL: 'https://openrouter.ai/api/v1',
+  apiKey: process.env.OPENROUTER_API_KEY,
+});
+
+// Using Nomic Embed Text for embeddings (768 dimensions)
+const EMBEDDING_MODEL = 'nomic-ai/nomic-embed-text-v1';
 
 // Initialize Pinecone
 const initPinecone = async () => {
@@ -16,16 +22,13 @@ const initPinecone = async () => {
   return pinecone.index(process.env.PINECONE_INDEX_NAME);
 };
 
-// Initialize Google Gemini Embeddings (FREE)
-const embeddings = new GoogleGenerativeAIEmbeddings({
-  apiKey: process.env.GOOGLE_API_KEY,
-  modelName: 'embedding-001',
-});
+import pdfParse from 'pdf-parse';
+import mammoth from 'mammoth';
 
 // Parse different file types
 async function parseDocument(buffer, fileType) {
   let text = '';
-  
+
   if (fileType === 'pdf') {
     const pdfData = await pdfParse(buffer);
     text = pdfData.text;
@@ -37,7 +40,7 @@ async function parseDocument(buffer, fileType) {
   } else {
     throw new Error('Unsupported file type');
   }
-  
+
   return text;
 }
 
@@ -48,13 +51,13 @@ export default async function handler(req, res) {
 
   try {
     const { fileContent, fileName, fileType } = req.body;
-    
+
     // Decode base64 file content
     const buffer = Buffer.from(fileContent, 'base64');
-    
+
     // Parse document
     const text = await parseDocument(buffer, fileType);
-    
+
     if (!text || text.trim().length === 0) {
       return res.status(400).json({ error: 'No text content found in document' });
     }
@@ -66,30 +69,41 @@ export default async function handler(req, res) {
     });
 
     const chunks = await textSplitter.createDocuments([text]);
-    
-    // Generate embeddings for each chunk
+
+    // Initialize services
     const index = await initPinecone();
     const vectors = [];
-    
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const embedding = await embeddings.embedQuery(chunk.pageContent);
-      
-      vectors.push({
-        id: `${fileName}-${Date.now()}-${i}`,
-        values: embedding,
-        metadata: {
-          text: chunk.pageContent,
-          source: fileName,
-          chunkIndex: i,
-        },
+
+    // Process chunks in batches to avoid rate limits and too large requests
+    const batchSize = 10; // Batch size for embeddings
+    for (let i = 0; i < chunks.length; i += batchSize) {
+      const currentBatch = chunks.slice(i, i + batchSize);
+      const batchTexts = currentBatch.map(c => c.pageContent);
+
+      // Generate embeddings via OpenRouter
+      const embeddingResponse = await openai.embeddings.create({
+        model: EMBEDDING_MODEL,
+        input: batchTexts,
+      });
+
+      embeddingResponse.data.forEach((data, indexInBatch) => {
+        const chunk = currentBatch[indexInBatch];
+        vectors.push({
+          id: `${fileName}-${Date.now()}-${i + indexInBatch}`,
+          values: data.embedding,
+          metadata: {
+            text: chunk.pageContent,
+            source: fileName,
+            chunkIndex: i + indexInBatch,
+          },
+        });
       });
     }
 
     // Upsert vectors to Pinecone in batches
-    const batchSize = 100;
-    for (let i = 0; i < vectors.length; i += batchSize) {
-      const batch = vectors.slice(i, i + batchSize);
+    const pineconeBatchSize = 100;
+    for (let i = 0; i < vectors.length; i += pineconeBatchSize) {
+      const batch = vectors.slice(i, i + pineconeBatchSize);
       await index.upsert(batch);
     }
 

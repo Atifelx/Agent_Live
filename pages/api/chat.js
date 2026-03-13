@@ -1,16 +1,23 @@
 // pages/api/chat.js
-// Agentic AI endpoint with vector search tool
+// Agentic AI endpoint with vector search tool using OpenRouter
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 import { Pinecone } from '@pinecone-database/pinecone';
-import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
 
-// Initialize services
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-const embeddings = new GoogleGenerativeAIEmbeddings({
-  apiKey: process.env.GOOGLE_API_KEY,
-  modelName: 'embedding-001',
+// Initialize OpenRouter client
+const openai = new OpenAI({
+  baseURL: 'https://openrouter.ai/api/v1',
+  apiKey: process.env.OPENROUTER_API_KEY,
+  defaultHeaders: {
+    'HTTP-Referer': 'https://github.com/Atifelx/Agent_Live', // Optional
+    'X-Title': 'Agent Live', // Optional
+  },
 });
+
+// Using NVIDIA Nemotron 3 Super (free) as requested
+const CHAT_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
+// Using Nomic Embed Text for embeddings (768 dimensions)
+const EMBEDDING_MODEL = 'nomic-ai/nomic-embed-text-v1';
 
 const initPinecone = async () => {
   const pinecone = new Pinecone({
@@ -23,10 +30,14 @@ const initPinecone = async () => {
 async function searchDocuments(query) {
   try {
     const index = await initPinecone();
-    
-    // Generate embedding for query
-    const queryEmbedding = await embeddings.embedQuery(query);
-    
+
+    // Generate embedding for query via OpenRouter
+    const embeddingResponse = await openai.embeddings.create({
+      model: EMBEDDING_MODEL,
+      input: query,
+    });
+    const queryEmbedding = embeddingResponse.data[0].embedding;
+
     // Search in Pinecone
     const searchResults = await index.query({
       vector: queryEmbedding,
@@ -64,8 +75,6 @@ async function searchDocuments(query) {
 
 // Agentic AI: Decide when to use tools
 async function processWithAgent(userMessage, chatHistory = []) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-
   // System prompt for agentic behavior
   const systemPrompt = `You are an intelligent AI assistant with access to a document search tool.
 
@@ -86,41 +95,34 @@ QUERY: <your search query here>
 
 Otherwise, just provide your answer directly.`;
 
-  // Build conversation
+  // Build messages array
   const messages = [
-    { role: 'user', parts: [{ text: systemPrompt }] },
-    { role: 'model', parts: [{ text: 'I understand. I will analyze questions and use the searchDocuments tool when needed to find information from uploaded documents.' }] },
+    { role: 'system', content: systemPrompt },
+    ...chatHistory.map(msg => ({
+      role: msg.role === 'user' ? 'user' : 'assistant',
+      content: msg.content
+    })),
+    { role: 'user', content: userMessage }
   ];
 
-  // Add chat history
-  chatHistory.forEach((msg) => {
-    messages.push({
-      role: msg.role === 'user' ? 'user' : 'model',
-      parts: [{ text: msg.content }],
-    });
-  });
-
-  // Add current message
-  messages.push({
-    role: 'user',
-    parts: [{ text: userMessage }],
-  });
-
   // First call: Decide if tool is needed
-  const chat = model.startChat({ history: messages.slice(0, -1) });
-  const result = await chat.sendMessage(userMessage);
-  const response = result.response.text();
+  const response = await openai.chat.completions.create({
+    model: CHAT_MODEL,
+    messages: messages,
+  });
+
+  const agentResponse = response.choices[0].message.content;
 
   // Check if agent wants to use tool
-  if (response.includes('TOOL: searchDocuments')) {
+  if (agentResponse.includes('TOOL: searchDocuments')) {
     // Extract query
-    const queryMatch = response.match(/QUERY: (.+)/);
+    const queryMatch = agentResponse.match(/QUERY: (.+)/);
     if (queryMatch) {
       const searchQuery = queryMatch[1].trim();
-      
+
       // Use tool
       const searchResult = await searchDocuments(searchQuery);
-      
+
       if (searchResult.success) {
         // Second call: Answer with context
         const contextPrompt = `Based on these search results from the documents:
@@ -133,9 +135,17 @@ Now answer the user's question: "${userMessage}"
 
 Provide a helpful answer and cite the sources.`;
 
-        const finalResult = await chat.sendMessage(contextPrompt);
+        const finalResponse = await openai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: [
+            ...messages,
+            { role: 'assistant', content: agentResponse },
+            { role: 'user', content: contextPrompt }
+          ],
+        });
+
         return {
-          answer: finalResult.response.text(),
+          answer: finalResponse.choices[0].message.content,
           usedTool: true,
           toolQuery: searchQuery,
           sources: searchResult.results.map(r => r.source),
@@ -153,7 +163,7 @@ Provide a helpful answer and cite the sources.`;
 
   // No tool needed, return direct answer
   return {
-    answer: response,
+    answer: agentResponse,
     usedTool: false,
   };
 }

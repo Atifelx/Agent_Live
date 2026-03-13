@@ -12,6 +12,7 @@
     "next": "^14.0.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "openai": "^4.24.1",
     "@google/generative-ai": "^0.2.1",
     "@pinecone-database/pinecone": "^2.0.0",
     "langchain": "^0.1.0",
