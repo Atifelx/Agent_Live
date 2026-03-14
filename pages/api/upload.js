@@ -11,8 +11,8 @@ const openai = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-// Using NVIDIA Llama Nemotron Embed VL 1B V2 (free) for embeddings (1024 dimensions)
-const EMBEDDING_MODEL = 'nvidia/llama-nemotron-embed-vl-1b-v2:free';
+// Using Google Gemini Embedding 001 (free) for embeddings (768 dimensions)
+const EMBEDDING_MODEL = 'google/gemini-embedding-001';
 
 // Initialize Pinecone
 const initPinecone = async () => {
@@ -50,7 +50,13 @@ export default async function handler(req, res) {
   }
 
   try {
+    console.log('Upload API Request Body Keys:', Object.keys(req.body || {}));
     const { fileContent, fileName, fileType } = req.body;
+
+    if (!fileContent) {
+      console.error('Missing fileContent. Body:', req.body);
+      throw new Error('fileContent is missing in request body');
+    }
 
     // Decode base64 file content
     const buffer = Buffer.from(fileContent, 'base64');
@@ -84,7 +90,13 @@ export default async function handler(req, res) {
       const embeddingResponse = await openai.embeddings.create({
         model: EMBEDDING_MODEL,
         input: batchTexts,
+        encoding_format: 'float', // Explicitly set to float to avoid base64 errors with NVIDIA
       });
+
+      if (!embeddingResponse || !embeddingResponse.data) {
+        console.error('Full Embedding Response:', JSON.stringify(embeddingResponse, null, 2));
+        throw new Error('Invalid embedding response from OpenRouter');
+      }
 
       embeddingResponse.data.forEach((data, indexInBatch) => {
         const chunk = currentBatch[indexInBatch];

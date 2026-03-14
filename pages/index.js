@@ -90,7 +90,7 @@ export default function Home() {
       if (data.success) {
         // Add AI response
         let aiMessage = data.answer;
-        
+
         // Show tool usage
         if (data.usedTool) {
           aiMessage += `\n\n🔍 *Used DocumentSearch tool with query: "${data.toolQuery}"*`;
@@ -132,7 +132,7 @@ export default function Home() {
               🤖 RAG Chatbot - Agentic AI Demo
             </h1>
             <p className="text-sm text-gray-600 mt-1">
-              Powered by Google Gemini + Pinecone Vector DB + LangChain
+              Powered by OpenRouter (NVIDIA Nemotron) + Pinecone Vector DB + LangChain
             </p>
           </div>
         </header>
@@ -143,7 +143,7 @@ export default function Home() {
             <div className="lg:col-span-1">
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h2 className="text-lg font-semibold mb-4">📤 Upload Documents</h2>
-                
+
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -153,14 +153,13 @@ export default function Home() {
                   className="hidden"
                   id="file-upload"
                 />
-                
+
                 <label
                   htmlFor="file-upload"
-                  className={`block w-full text-center px-4 py-3 rounded-lg font-medium cursor-pointer transition ${
-                    uploading
+                  className={`block w-full text-center px-4 py-3 rounded-lg font-medium cursor-pointer transition ${uploading
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                  }`}
+                    }`}
                 >
                   {uploading ? '⏳ Uploading...' : '📁 Choose File'}
                 </label>
@@ -182,7 +181,7 @@ export default function Home() {
                 <div className="mt-6 pt-6 border-t">
                   <h3 className="font-semibold mb-3">✅ Tech Stack:</h3>
                   <ul className="text-sm text-gray-700 space-y-1">
-                    <li>🤖 Google Gemini (LLM)</li>
+                    <li>🤖 NVIDIA Nemotron (via OpenRouter)</li>
                     <li>📊 Pinecone (Vector DB)</li>
                     <li>🔗 LangChain (Framework)</li>
                     <li>⚡ Next.js + Vercel</li>
@@ -205,16 +204,14 @@ export default function Home() {
                     messages.map((msg, idx) => (
                       <div
                         key={idx}
-                        className={`flex ${
-                          msg.role === 'user' ? 'justify-end' : 'justify-start'
-                        }`}
+                        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'
+                          }`}
                       >
                         <div
-                          className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                            msg.role === 'user'
+                          className={`max-w-[80%] rounded-lg px-4 py-2 ${msg.role === 'user'
                               ? 'bg-indigo-600 text-white'
                               : 'bg-gray-100 text-gray-900'
-                          }`}
+                            }`}
                         >
                           <p className="whitespace-pre-wrap">{msg.content}</p>
                         </div>

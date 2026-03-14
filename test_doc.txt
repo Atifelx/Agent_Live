@@ -1,0 +1,4 @@
+This is a test document for the Agent Live RAG chatbot.
+The secret code word for this test is "ANTIGRAVITY".
+This bot uses NVIDIA Nemotron for reasoning and BGE Large for embeddings.
+Pinecone stores this data in a 1024-dimension index.

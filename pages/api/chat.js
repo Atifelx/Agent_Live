@@ -16,8 +16,8 @@ const openai = new OpenAI({
 
 // Using NVIDIA Nemotron 3 Super (free) as requested
 const CHAT_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
-// Using NVIDIA Llama Nemotron Embed VL 1B V2 (free) for embeddings (1024 dimensions)
-const EMBEDDING_MODEL = 'nvidia/llama-nemotron-embed-vl-1b-v2:free';
+// Using Google Gemini Embedding 001 (free) for embeddings (768 dimensions)
+const EMBEDDING_MODEL = 'google/gemini-embedding-001';
 
 const initPinecone = async () => {
   const pinecone = new Pinecone({
@@ -32,10 +32,17 @@ async function searchDocuments(query) {
     const index = await initPinecone();
 
     // Generate embedding for query via OpenRouter
+    console.log('Generating embedding for query:', query);
     const embeddingResponse = await openai.embeddings.create({
       model: EMBEDDING_MODEL,
       input: query,
+      encoding_format: 'float', // Explicitly set to float
     });
+    console.log('Embedding Response for query:', JSON.stringify(embeddingResponse, null, 2));
+
+    if (!embeddingResponse || !embeddingResponse.data || !embeddingResponse.data[0]) {
+      throw new Error(`Invalid embedding response: ${JSON.stringify(embeddingResponse)}`);
+    }
     const queryEmbedding = embeddingResponse.data[0].embedding;
 
     // Search in Pinecone
@@ -175,6 +182,7 @@ export default async function handler(req, res) {
 
   try {
     const { message, chatHistory } = req.body;
+    console.log('Chat API Request:', { message, chatHistoryVisible: !!chatHistory });
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
