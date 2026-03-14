@@ -11,8 +11,9 @@ const openai = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-// Using Nomic Embed Text (free/cheap) for embeddings (768 dimensions)
-const EMBEDDING_MODEL = 'nomic-ai/nomic-embed-text-v1';
+// Using Google Gemini Embedding 001 (free) forced to 768 dimensions
+const EMBEDDING_MODEL = 'google/gemini-embedding-001';
+const EMBEDDING_DIMENSIONS = 768; // Crucial match for Pinecone
 
 // Initialize Pinecone
 const initPinecone = async () => {
@@ -90,7 +91,8 @@ export default async function handler(req, res) {
       const embeddingResponse = await openai.embeddings.create({
         model: EMBEDDING_MODEL,
         input: batchTexts,
-        encoding_format: 'float', // Explicitly set to float to avoid base64 errors with NVIDIA
+        encoding_format: 'float',
+        dimensions: EMBEDDING_DIMENSIONS, // Force 768 dimensions
       });
 
       if (!embeddingResponse || !embeddingResponse.data) {
