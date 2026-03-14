@@ -16,36 +16,27 @@ const openai = new OpenAI({
 
 // Using NVIDIA Nemotron 3 Super (free) as requested
 const CHAT_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
-// Using Google Gemini Embedding 001 (free) forced to 768 dimensions
-const EMBEDDING_MODEL = 'google/gemini-embedding-001';
-const EMBEDDING_DIMENSIONS = 768; // Crucial match for Pinecone
-
-const initPinecone = async () => {
-  const pinecone = new Pinecone({
-    apiKey: process.env.PINECONE_API_KEY,
-  });
-  return pinecone.index(process.env.PINECONE_INDEX_NAME);
-};
 
 // Tool: Vector Database Search
 async function searchDocuments(query) {
   try {
-    const index = await initPinecone();
-
-    // Generate embedding for query via OpenRouter
-    console.log('Generating embedding for query:', query);
-    const embeddingResponse = await openai.embeddings.create({
-      model: EMBEDDING_MODEL,
-      input: query,
-      encoding_format: 'float',
-      dimensions: EMBEDDING_DIMENSIONS, // Force 768 dimensions
+    const pinecone = new Pinecone({
+      apiKey: process.env.PINECONE_API_KEY,
     });
-    console.log('Embedding Response for query:', JSON.stringify(embeddingResponse, null, 2));
+    const index = pinecone.index(process.env.PINECONE_INDEX_NAME);
+
+    // Generate embedding for query via Pinecone Inference
+    console.log('Generating embedding for query using Pinecone:', query);
+    const embeddingResponse = await pinecone.inference.embed(
+      'multilingual-e5-large',
+      [query],
+      { inputType: 'query' }
+    );
 
     if (!embeddingResponse || !embeddingResponse.data || !embeddingResponse.data[0]) {
       throw new Error(`Invalid embedding response: ${JSON.stringify(embeddingResponse)}`);
     }
-    const queryEmbedding = embeddingResponse.data[0].embedding;
+    const queryEmbedding = embeddingResponse.data[0].values; // Pinecone returns 'values'
 
     // Search in Pinecone
     const searchResults = await index.query({
@@ -178,6 +169,10 @@ Provide a helpful answer and cite the sources.`;
 }
 
 export default async function handler(req, res) {
+  console.log('--- Chat API Request Received ---');
+  const keyMatch = process.env.OPENROUTER_API_KEY ? `Key present, length: ${process.env.OPENROUTER_API_KEY.length}, starts with: ${process.env.OPENROUTER_API_KEY.substring(0, 10)}...` : 'Key MISSING';
+  console.log('API Key Status:', keyMatch);
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

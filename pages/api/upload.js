@@ -8,17 +8,6 @@ const openai = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-// Using Google Gemini Embedding 001 (free) forced to 768 dimensions
-const EMBEDDING_MODEL = 'google/gemini-embedding-001';
-const EMBEDDING_DIMENSIONS = 768; // Crucial match for Pinecone
-
-// Initialize Pinecone
-const initPinecone = async () => {
-  const pinecone = new Pinecone({
-    apiKey: process.env.PINECONE_API_KEY,
-  });
-  return pinecone.index(process.env.PINECONE_INDEX_NAME);
-};
 
 // Parse different file types
 async function parseDocument(buffer, fileType) {
@@ -49,6 +38,9 @@ async function parseDocument(buffer, fileType) {
 
 export default async function handler(req, res) {
   console.log('--- Upload API Request Received ---');
+  const keyMatch = process.env.OPENROUTER_API_KEY ? `Key present, length: ${process.env.OPENROUTER_API_KEY.length}, starts with: ${process.env.OPENROUTER_API_KEY.substring(0, 10)}...` : 'Key MISSING';
+  console.log('API Key Status:', keyMatch);
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -81,33 +73,36 @@ export default async function handler(req, res) {
     const chunks = await textSplitter.createDocuments([text]);
 
     // Initialize services
-    const index = await initPinecone();
+    const pinecone = new Pinecone({
+      apiKey: process.env.PINECONE_API_KEY,
+    });
+    const index = pinecone.index(process.env.PINECONE_INDEX_NAME);
     const vectors = [];
 
-    // Process chunks in batches to avoid rate limits and too large requests
-    const batchSize = 10; // Batch size for embeddings
+    // Process chunks in batches to avoid rate limits
+    const batchSize = 90; // Pinecone Inference handles larger batches (up to 96)
+    console.log(`Generating embeddings for ${chunks.length} chunks using Pincone Inference...`);
+
     for (let i = 0; i < chunks.length; i += batchSize) {
       const currentBatch = chunks.slice(i, i + batchSize);
       const batchTexts = currentBatch.map(c => c.pageContent);
 
-      // Generate embeddings via OpenRouter
-      const embeddingResponse = await openai.embeddings.create({
-        model: EMBEDDING_MODEL,
-        input: batchTexts,
-        encoding_format: 'float',
-        dimensions: EMBEDDING_DIMENSIONS, // Force 768 dimensions
-      });
+      // Generate embeddings via Pinecone Inference
+      const embeddingResponse = await pinecone.inference.embed(
+        'multilingual-e5-large', // Standard hosted model (1024 dims)
+        batchTexts,
+        { inputType: 'passage', truncate: 'END' }
+      );
 
       if (!embeddingResponse || !embeddingResponse.data) {
-        console.error('Full Embedding Response:', JSON.stringify(embeddingResponse, null, 2));
-        throw new Error('Invalid embedding response from OpenRouter');
+        throw new Error('Invalid embedding response from Pinecone');
       }
 
       embeddingResponse.data.forEach((data, indexInBatch) => {
         const chunk = currentBatch[indexInBatch];
         vectors.push({
           id: `${fileName}-${Date.now()}-${i + indexInBatch}`,
-          values: data.embedding,
+          values: data.values, // Note: Pinecone returns 'values' not 'embedding'
           metadata: {
             text: chunk.pageContent,
             source: fileName,
@@ -118,6 +113,7 @@ export default async function handler(req, res) {
     }
 
     // Upsert vectors to Pinecone in batches
+    console.log(`Upserting ${vectors.length} vectors to Pinecone...`);
     const pineconeBatchSize = 100;
     for (let i = 0; i < vectors.length; i += pineconeBatchSize) {
       const batch = vectors.slice(i, i + pineconeBatchSize);
