@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { Pinecone } from '@pinecone-database/pinecone';
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
+import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 
 // Initialize OpenRouter client for embeddings
 const openai = new OpenAI({
