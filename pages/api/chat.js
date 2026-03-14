@@ -16,8 +16,8 @@ const openai = new OpenAI({
 
 // Using NVIDIA Nemotron 3 Super (free) as requested
 const CHAT_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
-// Using Google Gemini Embedding 001 (free) for embeddings (768 dimensions)
-const EMBEDDING_MODEL = 'google/gemini-embedding-001';
+// Using Nomic Embed Text (free/cheap) for embeddings (768 dimensions)
+const EMBEDDING_MODEL = 'nomic-ai/nomic-embed-text-v1';
 
 const initPinecone = async () => {
   const pinecone = new Pinecone({

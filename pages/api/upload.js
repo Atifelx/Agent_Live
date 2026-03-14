@@ -11,8 +11,8 @@ const openai = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-// Using Google Gemini Embedding 001 (free) for embeddings (768 dimensions)
-const EMBEDDING_MODEL = 'google/gemini-embedding-001';
+// Using Nomic Embed Text (free/cheap) for embeddings (768 dimensions)
+const EMBEDDING_MODEL = 'nomic-ai/nomic-embed-text-v1';
 
 // Initialize Pinecone
 const initPinecone = async () => {
