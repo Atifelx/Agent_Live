@@ -1,6 +1,3 @@
-// pages/api/upload.js
-// API route to handle document upload and vector storage using OpenRouter
-
 import OpenAI from 'openai';
 import { Pinecone } from '@pinecone-database/pinecone';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
@@ -23,29 +20,35 @@ const initPinecone = async () => {
   return pinecone.index(process.env.PINECONE_INDEX_NAME);
 };
 
-import pdfParse from 'pdf-parse';
-import mammoth from 'mammoth';
-
 // Parse different file types
 async function parseDocument(buffer, fileType) {
   let text = '';
+  console.log(`Parsing document type: ${fileType}, buffer size: ${buffer.length}`);
 
-  if (fileType === 'pdf') {
-    const pdfData = await pdfParse(buffer);
-    text = pdfData.text;
-  } else if (fileType === 'docx') {
-    const result = await mammoth.extractRawText({ buffer });
-    text = result.value;
-  } else if (fileType === 'txt') {
-    text = buffer.toString('utf-8');
-  } else {
-    throw new Error('Unsupported file type');
+  try {
+    if (fileType === 'pdf') {
+      const pdfParse = require('pdf-parse');
+      const pdfData = await pdfParse(buffer);
+      text = pdfData.text;
+    } else if (fileType === 'docx') {
+      const mammoth = require('mammoth');
+      const result = await mammoth.extractRawText({ buffer });
+      text = result.value;
+    } else if (fileType === 'txt') {
+      text = buffer.toString('utf-8');
+    } else {
+      throw new Error(`Unsupported file type: ${fileType}`);
+    }
+    console.log(`Successfully parsed ${fileType}. Text length: ${text.length}`);
+    return text;
+  } catch (err) {
+    console.error(`Error parsing ${fileType}:`, err);
+    throw err;
   }
-
-  return text;
 }
 
 export default async function handler(req, res) {
+  console.log('--- Upload API Request Received ---');
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
