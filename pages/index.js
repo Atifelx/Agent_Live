@@ -17,7 +17,9 @@ import {
   CheckCircle2,
   Loader2,
   BookOpen,
-  Sparkles
+  Sparkles,
+  Database,
+  History
 } from "lucide-react";
 
 export default function Home() {
@@ -27,8 +29,17 @@ export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadedDocs, setUploadedDocs] = useState([]);
   const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
+
+  // Load state from localStorage on mount
+  useEffect(() => {
+    const savedDocs = localStorage.getItem('aura_indexed_docs');
+    if (savedDocs) {
+      setUploadedDocs(JSON.parse(savedDocs));
+    }
+  }, []);
 
   // Auto-scroll to bottom of chat
   useEffect(() => {
@@ -84,6 +95,14 @@ export default function Home() {
           setTimeout(() => {
             setUploadProgress(100);
             setUploadStatus('Success!');
+
+            // Add to tracked documents
+            setUploadedDocs(prev => {
+              const updated = [...new Set([...prev, file.name])];
+              localStorage.setItem('aura_indexed_docs', JSON.stringify(updated));
+              return updated;
+            });
+
             setTimeout(() => {
               setUploading(false);
               setUploadProgress(0);
@@ -124,6 +143,8 @@ export default function Home() {
 
       if (data.success) {
         setMessages([{ role: 'assistant', content: "All documents cleared. I'm ready for new data." }]);
+        setUploadedDocs([]);
+        localStorage.removeItem('aura_indexed_docs');
       } else {
         alert(`Error: ${data.error}`);
       }
@@ -181,38 +202,41 @@ export default function Home() {
 
       {/* Navigation */}
       <nav className="border-b border-zinc-800/50 bg-[#0a0a0a]/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-zinc-100 rounded-lg flex items-center justify-center">
-              <BrainCircuit className="w-5 h-5 text-zinc-900" />
+        <div className="max-w-[1600px] mx-auto px-8 py-5 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-zinc-100 rounded-xl flex items-center justify-center shadow-lg shadow-white/5">
+              <BrainCircuit className="w-6 h-6 text-zinc-900" />
             </div>
-            <span className="text-xl font-bold tracking-tight">Aura</span>
-            <Badge variant="outline" className="ml-2 border-zinc-800 text-zinc-400 text-[10px] uppercase tracking-widest">Enterprise</Badge>
+            <span className="text-2xl font-bold tracking-tight">Aura</span>
+            <Badge variant="outline" className="ml-3 border-zinc-800 text-zinc-400 text-xs uppercase tracking-widest py-1 px-3">Enterprise</Badge>
           </div>
-          <div className="flex items-center space-x-4">
-            <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-zinc-100" onClick={handleDeleteData}>
-              <Trash2 className="w-4 h-4 mr-2" />
+          <div className="flex items-center space-x-6">
+            <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-zinc-100 text-sm" onClick={handleDeleteData}>
+              <Trash2 className="w-5 h-5 mr-3" />
               Reset DB
             </Button>
-            <Separator orientation="vertical" className="h-6 bg-zinc-800" />
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-xs text-zinc-500 font-medium uppercase tracking-wider">System Live</span>
+            <Separator orientation="vertical" className="h-8 bg-zinc-800" />
+            <div className="flex items-center space-x-3">
+              <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_12px_rgba(16,185,129,0.5)]" />
+              <span className="text-sm text-zinc-500 font-medium uppercase tracking-wider">System Live</span>
             </div>
           </div>
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-6 py-8 h-[calc(100vh-73px)]">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 h-full">
+      <main className="max-w-[1600px] mx-auto px-8 py-10 h-[calc(100vh-81px)]">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-10 h-full">
 
           {/* Sidebar */}
-          <div className="lg:col-span-1 space-y-6">
-            <Card className="bg-zinc-900/40 border-zinc-800/50 backdrop-blur-md">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Upload Context</CardTitle>
+          <div className="lg:col-span-1 space-y-8 flex flex-col">
+            <Card className="bg-zinc-900/40 border-zinc-800/50 backdrop-blur-md p-2">
+              <CardHeader className="pb-5">
+                <CardTitle className="text-sm font-semibold text-zinc-500 uppercase tracking-widest flex items-center">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Index New Source
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-6">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -225,47 +249,81 @@ export default function Home() {
                 <Button
                   asChild
                   disabled={uploading}
-                  className="w-full bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition-all shadow-xl shadow-zinc-950/20"
+                  className="w-full h-14 bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition-all shadow-2xl shadow-zinc-950/40 text-base font-semibold rounded-xl"
                 >
                   <label htmlFor="file-upload" className="cursor-pointer">
-                    {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-                    {uploading ? 'Processing' : 'Index Document'}
+                    {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Database className="w-5 h-5 mr-3" />}
+                    {uploading ? 'Neural Processing' : 'Inject Context'}
                   </label>
                 </Button>
 
                 {uploading && (
-                  <div className="space-y-3 pt-2">
-                    <div className="flex justify-between text-[11px] font-medium text-zinc-400">
+                  <div className="space-y-4 pt-2">
+                    <div className="flex justify-between text-xs font-semibold text-zinc-400">
                       <span className="flex items-center">
-                        <Loader2 className="w-3 h-3 animate-spin mr-1.5" />
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
                         {uploadStatus}
                       </span>
                       <span>{uploadProgress}%</span>
                     </div>
-                    <Progress value={uploadProgress} className="h-1 bg-zinc-800" />
+                    <Progress value={uploadProgress} className="h-1.5 bg-zinc-800" />
                   </div>
                 )}
 
-                <p className="text-[10px] text-zinc-500 text-center uppercase tracking-widest font-medium">
+                <p className="text-xs text-zinc-500 text-center uppercase tracking-[0.15em] font-bold">
                   PDF • TXT • DOCX (MAX 50MB)
                 </p>
               </CardContent>
             </Card>
 
-            <div className="space-y-4 px-2">
-              <h4 className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.2em] mb-4">Architecture</h4>
+            {/* Active Documents List */}
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between mb-5 px-2">
+                <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-[0.2em] flex items-center">
+                  <History className="w-4 h-4 mr-2 text-zinc-500" />
+                  Active Knowledge
+                </h4>
+                <Badge className="bg-zinc-800/80 text-zinc-300 border-none font-bold text-[10px]">{uploadedDocs.length}</Badge>
+              </div>
+
+              <ScrollArea className="flex-1 bg-zinc-900/10 rounded-2xl border border-zinc-800/30">
+                <div className="p-4 space-y-3">
+                  {uploadedDocs.length === 0 ? (
+                    <div className="py-10 text-center opacity-30">
+                      <FileText className="w-8 h-8 mx-auto mb-3 opacity-20" />
+                      <p className="text-xs font-medium tracking-wide">No Documents Indexed</p>
+                    </div>
+                  ) : (
+                    uploadedDocs.map((doc, i) => (
+                      <div key={i} className="flex items-center p-3.5 bg-zinc-900/60 rounded-xl border border-zinc-800/40 group hover:border-zinc-700 transition-all animate-in fade-in slide-in-from-left-2 duration-300" style={{ animationDelay: `${i * 100}ms` }}>
+                        <div className="p-2 bg-zinc-950 rounded-lg mr-3 shadow-inner">
+                          <FileText className="w-4 h-4 text-emerald-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-zinc-200 truncate pr-2 tracking-tight">{doc}</p>
+                          <p className="text-[10px] font-bold text-emerald-500/80 uppercase tracking-widest mt-0.5">Live In Vector DB</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+
+            <div className="space-y-5 px-3 pt-4 border-t border-zinc-800/30">
+              <h4 className="text-xs font-bold text-zinc-600 uppercase tracking-[0.2em]">Infrastructure</h4>
               {[
-                { icon: Search, label: "Vector Retrieval", desc: "Pinecone Inference" },
-                { icon: Sparkles, label: "Neural Answer", desc: "NVIDIA Nemotron" },
-                { icon: BookOpen, label: "RAG Pipeline", desc: "Sourcing Active" }
+                { icon: Search, label: "Vector Retrieval", desc: "Pinecone Inference (RAG)" },
+                { icon: Sparkles, label: "Neural Answer", desc: "NVIDIA Nemotron 3" },
+                { icon: BookOpen, label: "RAG Pipeline", desc: "Sourcing Active & Verified" }
               ].map((item, i) => (
-                <div key={i} className="flex items-start space-x-3 group">
-                  <div className="p-2 bg-zinc-900/60 rounded-lg group-hover:bg-zinc-800 transition-colors">
-                    <item.icon className="w-3.5 h-3.5 text-zinc-400" />
+                <div key={i} className="flex items-start space-x-4 group">
+                  <div className="p-2.5 bg-zinc-900/60 rounded-xl group-hover:bg-zinc-800 transition-colors shadow-inner">
+                    <item.icon className="w-4 h-4 text-zinc-400 group-hover:text-zinc-200 transition-colors" />
                   </div>
-                  <div>
-                    <div className="text-[11px] font-bold text-zinc-300">{item.label}</div>
-                    <div className="text-[10px] text-zinc-600 font-medium">{item.desc}</div>
+                  <div className="pt-0.5">
+                    <div className="text-sm font-bold text-zinc-300 tracking-tight">{item.label}</div>
+                    <div className="text-xs text-zinc-600 font-semibold tracking-wide mt-0.5">{item.desc}</div>
                   </div>
                 </div>
               ))}
@@ -273,42 +331,45 @@ export default function Home() {
           </div>
 
           {/* Chat Engine */}
-          <Card className="lg:col-span-3 flex flex-col bg-zinc-900/20 border-zinc-800/50 overflow-hidden backdrop-blur-sm relative group">
+          <Card className="lg:col-span-3 flex flex-col bg-zinc-900/20 border-zinc-800/50 overflow-hidden backdrop-blur-sm relative group shadow-2xl shadow-black/80">
             {/* Ambient Background Glow */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-zinc-800/20 rounded-full blur-[120px] -z-10 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-zinc-800/10 rounded-full blur-[160px] -z-10 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-900/5 rounded-full blur-[140px] -z-10 pointer-events-none" />
 
-            <ScrollArea className="flex-1 p-6" ref={scrollRef}>
-              <div className="max-w-3xl mx-auto space-y-8 pb-4">
+            <ScrollArea className="flex-1 p-8" ref={scrollRef}>
+              <div className="max-w-4xl mx-auto space-y-10 pb-6">
                 {messages.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center mt-32 space-y-4 opacity-50">
-                    <BrainCircuit className="w-12 h-12 text-zinc-700" />
+                  <div className="h-full flex flex-col items-center justify-center mt-40 space-y-6 opacity-30">
+                    <div className="p-5 bg-zinc-900/40 rounded-3xl border border-zinc-800 shadow-inner group-hover:scale-110 transition-transform duration-500">
+                      <BrainCircuit className="w-16 h-16 text-zinc-100" />
+                    </div>
                     <div className="text-center">
-                      <h3 className="text-lg font-medium text-zinc-300">Neural Engine Offline</h3>
-                      <p className="text-sm text-zinc-500">Awaiting document context or user prompt.</p>
+                      <h3 className="text-xl font-bold text-zinc-100 tracking-tight">Intelligence Ready</h3>
+                      <p className="text-base text-zinc-500 font-medium mt-2">Awaiting document context or user inquiry.</p>
                     </div>
                   </div>
                 ) : (
                   messages.map((msg, idx) => (
-                    <div key={idx} className={`flex items-start ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-500`}>
-                      <div className={`max-w-[85%] space-y-3`}>
-                        <div className={`px-5 py-4 rounded-2xl text-[14px] leading-relaxed shadow-sm ${msg.role === 'user'
-                          ? 'bg-zinc-100 text-zinc-900 font-medium ml-12'
-                          : 'bg-zinc-900/80 border border-zinc-800 text-zinc-300 mr-12'
+                    <div key={idx} className={`flex items-start ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out`}>
+                      <div className={`max-w-[80%] space-y-4`}>
+                        <div className={`px-7 py-5 rounded-[2rem] text-base leading-[1.6] shadow-2xl ${msg.role === 'user'
+                            ? 'bg-zinc-100 text-zinc-900 font-semibold ml-16 shadow-white/5'
+                            : 'bg-zinc-900/80 border border-zinc-800 text-zinc-100 mr-16 border-white/5'
                           }`}>
                           {msg.content}
                         </div>
 
                         {msg.role === 'assistant' && msg.usedTool && (
-                          <div className="flex flex-col space-y-2 ml-4">
-                            <div className="flex items-center space-x-2 text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
-                              <Search className="w-3 h-3" />
-                              <span>Found relevant context in docs</span>
+                          <div className="flex flex-col space-y-3 ml-6 animate-in fade-in slide-in-from-top-2 duration-500">
+                            <div className="flex items-center space-x-2 text-xs text-zinc-500 font-bold uppercase tracking-[0.2em]">
+                              <Search className="w-4 h-4 text-emerald-500" />
+                              <span>Verified Context Retrieval</span>
                             </div>
                             {msg.sources && msg.sources.length > 0 && (
-                              <div className="flex flex-wrap gap-2">
+                              <div className="flex flex-wrap gap-2.5">
                                 {Array.from(new Set(msg.sources)).map((s, i) => (
-                                  <Badge key={i} variant="outline" className="bg-zinc-950/50 border-zinc-800 text-[10px] text-zinc-400 capitalize">
-                                    <FileText className="w-2.5 h-2.5 mr-1" />
+                                  <Badge key={i} variant="outline" className="bg-zinc-900/80 border-zinc-700 text-xs text-zinc-400 capitalize py-1.5 px-4 rounded-xl shadow-inner font-bold tracking-tight">
+                                    <FileText className="w-3.5 h-3.5 mr-2 text-zinc-500" />
                                     {s}
                                   </Badge>
                                 ))}
@@ -321,12 +382,12 @@ export default function Home() {
                   ))
                 )}
                 {loading && (
-                  <div className="flex justify-start animate-in fade-in duration-300">
-                    <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl px-5 py-3 shadow-sm">
-                      <div className="flex space-x-1.5">
-                        <div className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
-                        <div className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                        <div className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                  <div className="flex justify-start animate-in fade-in duration-300 ml-2">
+                    <div className="bg-zinc-900/60 border border-zinc-800 rounded-3xl px-8 py-5 shadow-inner">
+                      <div className="flex space-x-2.5">
+                        <div className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
+                        <div className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0.25s' }} />
+                        <div className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0.5s' }} />
                       </div>
                     </div>
                   </div>
@@ -335,27 +396,27 @@ export default function Home() {
             </ScrollArea>
 
             {/* Input Engine */}
-            <div className="p-6 bg-[#0a0a0a]/50 backdrop-blur-xl border-t border-zinc-800/50">
-              <div className="max-w-3xl mx-auto flex items-center space-x-3">
+            <div className="p-8 bg-[#0a0a0a]/80 backdrop-blur-2xl border-t border-zinc-800/50">
+              <div className="max-w-4xl mx-auto flex items-center space-x-4">
                 <div className="relative flex-1 group">
                   <Input
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                    placeholder="Analyze document content..."
+                    placeholder="Analyze neural patterns and document context..."
                     disabled={loading || uploading}
-                    className="h-12 bg-zinc-900/50 border-zinc-800 focus:border-zinc-500 focus:ring-0 rounded-xl px-4 transition-all"
+                    className="h-16 bg-zinc-900/60 border-zinc-800 focus:border-zinc-400 focus:ring-0 rounded-2xl px-6 text-base transition-all placeholder:text-zinc-600"
                   />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center h-full pointer-events-none">
-                    <span className="text-[10px] font-bold text-zinc-600 bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800 group-focus-within:border-zinc-600 transition-colors">⌘ ENTER</span>
+                  <div className="absolute right-5 top-1/2 -translate-y-1/2 flex items-center h-full pointer-events-none">
+                    <span className="text-[11px] font-bold text-zinc-600 bg-zinc-950 px-2 py-1 rounded-lg border border-zinc-800 shadow-inner tracking-widest group-focus-within:border-zinc-500 transition-colors">⌘ ENTER</span>
                   </div>
                 </div>
                 <Button
                   onClick={handleSend}
                   disabled={loading || !input.trim() || uploading}
-                  className="h-12 w-12 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-900 shadow-xl transition-all"
+                  className="h-16 w-16 rounded-2xl bg-zinc-100 hover:bg-zinc-200 text-zinc-900 shadow-2xl transition-all active:scale-95"
                 >
-                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                  {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Send className="w-6 h-6" />}
                 </Button>
               </div>
             </div>
