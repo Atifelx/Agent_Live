@@ -102,32 +102,36 @@ async function searchWeb(query) {
   }
 }
 
-// Agentic AI: Multi-Tool Facilitator
+// Agentic AI: Multi-Tool Facilitator (Recursive Reasoning Loop)
 async function processWithAgent(userMessage, chatHistory = [], activeDocs = []) {
   const libraryContext = activeDocs.length > 0
     ? `Currently active in your SECURE PRIVATE LIBRARY: [${activeDocs.join(', ')}].`
     : "Your private library is currently empty. Direct the user to upload documents if they ask about private files.";
 
-  const systemPrompt = `You are Clever Chat, a sophisticated and empathetic AI research partner. Your goal is to help the user master complex information through insightful conversation.
+  const systemPrompt = `You are Clever Chat, a sophisticated and empathetic AI research partner. Your goal is to help the user master complex information through multi-step reasoning.
 
 ${libraryContext}
 
 You have access to TWO primary intelligence streams:
-1. searchDocuments(query) - Search your SECURE PRIVATE LIBRARY. Use this for deep-dives into the user's specific uploaded files listed above.
-2. searchWeb(query) - Access the LIVE WORLD. Use this for real-time data, current events, and general facts beyond your private library.
+1. searchDocuments(query) - Search your SECURE PRIVATE LIBRARY. Use this for facts in specific uploaded files.
+2. searchWeb(query) - Access the LIVE WORLD. Use this for current events, real-world examples, and facts beyond your library.
+
+THINKING PROTOCOL:
+1. **Analyze**: Break down the user's query. Do you need book facts? Do you need web examples?
+2. **Execute**: If you need information, CALL A TOOL.
+3. **Loop**: Review the tool results. Does this answer the whole question? If you need more info (e.g., now you need web examples for the book facts you found), CALL ANOTHER TOOL.
+4. **Finalize**: Once you have ALL the pieces, synthesize a final human response.
 
 YOUR VOICE:
-- **Natural & Human**: Respond like a high-level advisor. Use a professional yet conversational tone.
-- **Synthesis over Extraction**: Do not just quote text. Read the search results, understand the core lesson, and explain it clearly in your own words.
-- **Engaging**: Acknowledge the user's intent or curiosity before presenting data.
-- **Clean Output**: NEVER use robotic prefixes like "Based on the context provided..." Use natural transitions instead.
+- **Natural & Human**: Professional yet conversational.
+- **Synthesis over Extraction**: Connect the dots across different search results.
+- **No Technical Leaks**: NEVER show "TOOL:" or "QUERY:" in your final answer.
 
-PROTOCOL:
-- If a question is about the documents currently in your library, YOU MUST USE searchDocuments.
-- For current pricing, news, or general live facts, USE searchWeb.
-- Respond ONLY with the TOOL/QUERY block if a search is needed. Once you have data, provide your final response.`;
+RESPONSE FORMAT:
+- To use a tool, respond ONLY with: TOOL: <toolName> \n QUERY: <searchQuery>
+- To give the final answer, respond with your natural synthesis.`;
 
-  const messages = [
+  let currentMessages = [
     { role: 'system', content: systemPrompt },
     ...chatHistory.map(msg => ({
       role: msg.role === 'user' ? 'user' : 'assistant',
@@ -136,105 +140,97 @@ PROTOCOL:
     { role: 'user', content: userMessage }
   ];
 
-  // Pass 1: Reasoning
-  const response = await openai.chat.completions.create({
-    model: CHAT_MODEL,
-    messages: messages,
-    temperature: 0.1,
-  });
+  let turns = 0;
+  const maxTurns = 4;
+  let finalResult = { answer: "I'm having trouble reasoning through that. Could you rephrase?", usedTool: false };
 
-  // Enhanced Tool Detection (Protocol + JSON Fallback)
-  let toolName = null;
-  let searchQuery = null;
+  while (turns < maxTurns) {
+    turns++;
+    console.log(`--- Reasoning Turn ${turns} ---`);
 
-  const toolMatch = agentResponse.match(/TOOL:\s*(\w+)/);
-  const queryMatch = agentResponse.match(/QUERY:\s*(.+)/);
+    const response = await openai.chat.completions.create({
+      model: CHAT_MODEL,
+      messages: currentMessages,
+      temperature: 0.1,
+    });
 
-  if (toolMatch && queryMatch) {
-    toolName = toolMatch[1].trim();
-    searchQuery = queryMatch[1].trim();
-  } else {
-    // Fallback: Check for JSON-style calls
-    try {
-      const jsonMatch = agentResponse.match(/\{[\s\S]*"tool"[\s\S]*"query"[\s\S]*\}/);
-      if (jsonMatch) {
-        const potentialJson = JSON.parse(jsonMatch[0]);
-        if (potentialJson.tool && potentialJson.query) {
-          toolName = potentialJson.tool;
-          searchQuery = potentialJson.query;
-          console.log('JSON Tool Call Detected:', toolName);
+    const agentResponse = response.choices[0].message.content;
+    console.log(`Agent Thought: ${agentResponse.substring(0, 100)}...`);
+
+    // Enhanced Tool Detection
+    let toolName = null;
+    let searchQuery = null;
+
+    const toolMatch = agentResponse.match(/TOOL:\s*(\w+)/i);
+    const queryMatch = agentResponse.match(/QUERY:\s*(.+)/i);
+
+    if (toolMatch && queryMatch) {
+      toolName = toolMatch[1].trim();
+      searchQuery = queryMatch[1].trim();
+    } else {
+      // Fallback: Check for JSON-style calls
+      try {
+        const jsonMatch = agentResponse.match(/\{[\s\S]*"tool"[\s\S]*"query"[\s\S]*\}/);
+        if (jsonMatch) {
+          const potentialJson = JSON.parse(jsonMatch[0]);
+          if (potentialJson.tool && potentialJson.query) {
+            toolName = potentialJson.tool;
+            searchQuery = potentialJson.query;
+          }
         }
+      } catch (e) { }
+    }
+
+    if (toolName && searchQuery) {
+      console.log(`Executing Tool: ${toolName} | Query: ${searchQuery}`);
+      let toolResult = null;
+      if (toolName === 'searchDocuments') {
+        toolResult = await searchDocuments(searchQuery);
+      } else if (toolName === 'searchWeb' || toolName === 'searchTavily') {
+        toolResult = await searchWeb(searchQuery);
       }
-    } catch (e) {
-      // Not valid JSON, continue to direct answer
-    }
-  }
 
-  if (toolName && searchQuery) {
-    let toolResult = null;
-    if (toolName === 'searchDocuments') {
-      toolResult = await searchDocuments(searchQuery);
-    } else if (toolName === 'searchWeb' || toolName === 'searchTavily') {
-      toolResult = await searchWeb(searchQuery);
-    }
+      if (toolResult && toolResult.success) {
+        // Add thought and observation to history
+        currentMessages.push({ role: 'assistant', content: agentResponse });
+        currentMessages.push({
+          role: 'user',
+          content: `OBSERVATION from ${toolName}:\n${toolResult.context}\n\nDoes this complete the user's request? If you need another step (e.g. web search for examples), perform it now. Otherwise, give the final answer.`
+        });
 
-    if (toolResult && toolResult.success) {
-      const toolObservation = toolResult.context;
+        // Track stats for the final return
+        finalResult.usedTool = true;
+        finalResult.toolName = toolName;
+        finalResult.toolQuery = searchQuery;
+        if (toolResult.results) {
+          finalResult.sources = [...(finalResult.sources || []), ...toolResult.results.map(r => r.source)];
+        } else if (toolResult.sources) {
+          finalResult.sources = [...(finalResult.sources || []), ...toolResult.sources];
+        }
+      } else {
+        currentMessages.push({ role: 'assistant', content: agentResponse });
+        currentMessages.push({ role: 'user', content: `Tool Error: ${toolResult?.message || 'Unknown error'}. Please try to answer with what you know or attempt a different search.` });
+      }
+    } else {
+      // No tool call -> Final Human Answer
+      let finalAnswer = agentResponse;
 
-      const finalPrompt = `INTELLIGENCE STREAM DATA:
-${toolObservation}
-
-${toolResult.tavilyAnswer ? `WEB SUMMARY: ${toolResult.tavilyAnswer}\n` : ''}
-
-INSTRUCTIONS FOR AURA:
-1. **Synthesize & Discuss**: Do not simply repeat the snippets. Connect the dots and explain the answer naturally as if you've mastered the material yourself.
-2. **Direct Answer**: Address the user's specific curiosity first.
-3. **Natural Citations**: Integrate citations naturally into your flow (e.g., "(as highlighted in ${toolResult.sources?.[0] || 'the documents'})").
-4. **NO ROBOTIC PREFIXES**: Avoid "According to the context" or "Based on my search." Just start the conversation.
-
-User Inquiry: "${userMessage}"`;
-
-      const finalResponse = await openai.chat.completions.create({
-        model: CHAT_MODEL,
-        messages: [
-          ...messages,
-          { role: 'assistant', content: agentResponse },
-          { role: 'user', content: finalPrompt }
-        ],
-      });
-
-      let finalAnswer = finalResponse.choices[0].message.content;
-
-      // Ironclad Technical Cleanup (Remove JSON, TOOL tags, and technical markers)
+      // Ironclad Technical Cleanup
       finalAnswer = finalAnswer
-        .replace(/\{[\s\S]*"tool"[\s\S]*"query"[\s\S]*\}/gi, '') // Remove JSON
-        .replace(/TOOL:\s*\w+/gi, '')                           // Remove TOOL tags
-        .replace(/QUERY:\s*.+/gi, '')                           // Remove QUERY tags
-        .replace(/INTELLIGENCE STREAM DATA:[\s\S]*?(?=User Inquiry:|$)/gi, '') // Remove internal context echoes
+        .replace(/\{[\s\S]*"tool"[\s\S]*"query"[\s\S]*\}/gi, '')
+        .replace(/TOOL:\s*\w+/gi, '')
+        .replace(/QUERY:\s*.+/gi, '')
+        .replace(/OBSERVATION from [\s\S]*?:/gi, '')
         .trim();
 
       return {
+        ...finalResult,
         answer: finalAnswer,
-        usedTool: true,
-        toolName,
-        toolQuery: searchQuery,
-        sources: toolResult.sources || (toolResult.results ? toolResult.results.map(r => r.source) : []),
-      };
-    } else {
-      return {
-        answer: toolResult?.message || "I couldn't retrieve information for that request.",
-        usedTool: true,
-        toolName,
-        toolQuery: searchQuery
       };
     }
   }
 
-  // Direct Answer (General conversation)
-  return {
-    answer: agentResponse,
-    usedTool: false,
-  };
+  return finalResult;
 }
 
 export default async function handler(req, res) {
