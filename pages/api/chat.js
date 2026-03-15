@@ -196,9 +196,12 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Chat error:', error);
+    // Extract specific error message if available (e.g. from OpenRouter/OpenAI client)
+    const detailedMessage = error.error?.message || error.message || 'Unknown error';
     return res.status(500).json({
+      success: false,
       error: 'Failed to process message',
-      details: error.message,
+      details: detailedMessage,
     });
   }
 }
