@@ -199,18 +199,27 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 selection:bg-zinc-700">
       <Head>
-        <title>Aura | Intelligent RAG</title>
+        <title>Clever Chat | Agentic AI</title>
       </Head>
 
       {/* Navigation */}
       <nav className="border-b border-zinc-800/50 bg-[#0a0a0a]/80 backdrop-blur-xl sticky top-0 z-50">
         <div className="max-w-[1600px] mx-auto px-8 py-5 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-4">
             <div className="w-10 h-10 bg-zinc-100 rounded-xl flex items-center justify-center shadow-lg shadow-white/5">
               <BrainCircuit className="w-6 h-6 text-zinc-900" />
             </div>
-            <span className="text-2xl font-bold tracking-tight">Aura</span>
-            <Badge variant="outline" className="ml-3 border-zinc-800 text-zinc-400 text-xs uppercase tracking-widest py-1 px-3">Enterprise</Badge>
+            <div className="flex flex-col">
+              <span className="text-2xl font-bold tracking-tight text-white">Clever Chat</span>
+              <span className="text-xs text-zinc-500 font-medium tracking-wide">
+                Build by <a href="https://www.linkedin.com/in/atif-shaikh/" target="_blank" rel="noopener noreferrer" className="text-emerald-500 hover:text-emerald-400 hover:underline transition-colors">Atif Shaikh</a>
+              </span>
+            </div>
+            <div className="hidden md:flex ml-6 pl-6 border-l border-zinc-800">
+              <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-600">
+                Agentic AI | Langchain | RAG | Live Search Agents
+              </span>
+            </div>
           </div>
           <div className="flex items-center space-x-6">
             <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-zinc-100 text-sm" onClick={handleDeleteData}>

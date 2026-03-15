@@ -104,7 +104,7 @@ async function searchWeb(query) {
 
 // Agentic AI: Multi-Tool Facilitator
 async function processWithAgent(userMessage, chatHistory = []) {
-  const systemPrompt = `You are Aura, a sophisticated and empathetic AI research partner. Your goal is to help the user master complex information through insightful conversation.
+  const systemPrompt = `You are Clever Chat, a sophisticated and empathetic AI research partner. Your goal is to help the user master complex information through insightful conversation.
 
 You have access to TWO primary intelligence streams:
 1. searchDocuments(query) - Access your SECURE PRIVATE LIBRARY. Use this for deep-dives into the user's uploaded books, files, and personal data.
