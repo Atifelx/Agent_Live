@@ -94,7 +94,7 @@ export default function Home() {
           setUploading(false);
           setUploadProgress(0);
           setUploadStatus('');
-          alert(`❌ Upload failed: ${data.error}`);
+          alert(`Upload failed: ${data.error}`);
         }
 
         if (fileInputRef.current) {
@@ -125,7 +125,7 @@ export default function Home() {
       if (data.success) {
         setMessages([{ role: 'assistant', content: "All documents cleared. I'm ready for new data." }]);
       } else {
-        alert(`❌ Error: ${data.error}`);
+        alert(`Error: ${data.error}`);
       }
     } catch (error) {
       alert(`Error: ${error.message}`);
@@ -292,8 +292,8 @@ export default function Home() {
                     <div key={idx} className={`flex items-start ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-500`}>
                       <div className={`max-w-[85%] space-y-3`}>
                         <div className={`px-5 py-4 rounded-2xl text-[14px] leading-relaxed shadow-sm ${msg.role === 'user'
-                            ? 'bg-zinc-100 text-zinc-900 font-medium ml-12'
-                            : 'bg-zinc-900/80 border border-zinc-800 text-zinc-300 mr-12'
+                          ? 'bg-zinc-100 text-zinc-900 font-medium ml-12'
+                          : 'bg-zinc-900/80 border border-zinc-800 text-zinc-300 mr-12'
                           }`}>
                           {msg.content}
                         </div>
