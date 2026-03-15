@@ -105,4 +105,55 @@
     font-weight: 600;
     letter-spacing: -0.02em;
   }
+
+  /* Markdown Styles for Chat bubbles */
+  .prose-aura {
+    color: inherit;
+    max-width: none;
+  }
+
+  .prose-aura strong {
+    color: inherit;
+    font-weight: 700;
+  }
+
+  .prose-aura em {
+    color: inherit;
+    font-style: italic;
+  }
+
+  .prose-aura ul {
+    list-style-type: disc;
+    margin-left: 1.5rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .prose-aura ol {
+    list-style-type: decimal;
+    margin-left: 1.5rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .prose-aura li {
+    margin-top: 0.25rem;
+  }
+
+  .prose-aura code {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.9em;
+  }
+
+  .prose-aura pre {
+    background-color: rgba(0, 0, 0, 0.3);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-top: 0.75rem;
+    margin-bottom: 0.75rem;
+    overflow-x: auto;
+  }
 }

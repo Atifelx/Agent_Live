@@ -21,6 +21,7 @@ import {
   Database,
   History
 } from "lucide-react";
+import ReactMarkdown from 'react-markdown';
 
 export default function Home() {
   const [messages, setMessages] = useState([]);
@@ -356,7 +357,9 @@ export default function Home() {
                             ? 'bg-zinc-100 text-zinc-900 font-semibold ml-16 shadow-white/5'
                             : 'bg-zinc-900/80 border border-zinc-800 text-zinc-100 mr-16 border-white/5'
                           }`}>
-                          {msg.content}
+                          <ReactMarkdown className="prose-aura">
+                            {msg.content}
+                          </ReactMarkdown>
                         </div>
 
                         {msg.role === 'assistant' && msg.usedTool && (
