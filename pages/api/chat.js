@@ -143,20 +143,38 @@ PROTOCOL:
     temperature: 0.1,
   });
 
-  let agentResponse = response.choices[0].message.content;
+  // Enhanced Tool Detection (Protocol + JSON Fallback)
+  let toolName = null;
+  let searchQuery = null;
 
-  // Tool Detection
   const toolMatch = agentResponse.match(/TOOL:\s*(\w+)/);
   const queryMatch = agentResponse.match(/QUERY:\s*(.+)/);
 
   if (toolMatch && queryMatch) {
-    const toolName = toolMatch[1].trim();
-    const searchQuery = queryMatch[1].trim();
-    let toolResult = null;
+    toolName = toolMatch[1].trim();
+    searchQuery = queryMatch[1].trim();
+  } else {
+    // Fallback: Check for JSON-style calls
+    try {
+      const jsonMatch = agentResponse.match(/\{[\s\S]*"tool"[\s\S]*"query"[\s\S]*\}/);
+      if (jsonMatch) {
+        const potentialJson = JSON.parse(jsonMatch[0]);
+        if (potentialJson.tool && potentialJson.query) {
+          toolName = potentialJson.tool;
+          searchQuery = potentialJson.query;
+          console.log('JSON Tool Call Detected:', toolName);
+        }
+      }
+    } catch (e) {
+      // Not valid JSON, continue to direct answer
+    }
+  }
 
+  if (toolName && searchQuery) {
+    let toolResult = null;
     if (toolName === 'searchDocuments') {
       toolResult = await searchDocuments(searchQuery);
-    } else if (toolName === 'searchWeb') {
+    } else if (toolName === 'searchWeb' || toolName === 'searchTavily') {
       toolResult = await searchWeb(searchQuery);
     }
 
@@ -186,8 +204,14 @@ User Inquiry: "${userMessage}"`;
       });
 
       let finalAnswer = finalResponse.choices[0].message.content;
-      // Cleanup leaks
-      finalAnswer = finalAnswer.replace(/TOOL:\s*\w+/gi, '').replace(/QUERY:\s*.+/gi, '').trim();
+
+      // Ironclad Technical Cleanup (Remove JSON, TOOL tags, and technical markers)
+      finalAnswer = finalAnswer
+        .replace(/\{[\s\S]*"tool"[\s\S]*"query"[\s\S]*\}/gi, '') // Remove JSON
+        .replace(/TOOL:\s*\w+/gi, '')                           // Remove TOOL tags
+        .replace(/QUERY:\s*.+/gi, '')                           // Remove QUERY tags
+        .replace(/INTELLIGENCE STREAM DATA:[\s\S]*?(?=User Inquiry:|$)/gi, '') // Remove internal context echoes
+        .trim();
 
       return {
         answer: finalAnswer,
