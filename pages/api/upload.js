@@ -70,7 +70,8 @@ export default async function handler(req, res) {
       chunkOverlap: 200, // Higher overlap to maintain context across chunks
     });
 
-    const chunks = await textSplitter.createDocuments([text]);
+    // Helper for throttling
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     // Initialize services
     const pinecone = new Pinecone({
@@ -79,16 +80,19 @@ export default async function handler(req, res) {
     const index = pinecone.index(process.env.PINECONE_INDEX_NAME);
     const vectors = [];
 
-    // Process chunks in batches to avoid rate limits
-    const batchSize = 90; // Pinecone Inference handles larger batches (up to 96)
-    console.log(`Generating embeddings for ${chunks.length} chunks using Pincone Inference...`);
+    // Process chunks in batches to avoid rate limits (250k tokens/min)
+    const batchSize = 70;
+    const totalBatches = Math.ceil(chunks.length / batchSize);
+    console.log(`Generating embeddings for ${chunks.length} chunks (${totalBatches} batches) using Pinecone Inference...`);
 
     for (let i = 0; i < chunks.length; i += batchSize) {
+      const batchNum = Math.floor(i / batchSize) + 1;
       const currentBatch = chunks.slice(i, i + batchSize);
       const batchTexts = currentBatch.map(c => c.pageContent);
 
+      console.log(`Processing Batch ${batchNum}/${totalBatches}...`);
+
       // Generate embeddings via Pinecone Inference
-      // IMPORTANT: Must match the model used when the index was created (llama-text-embed-v2)
       const embeddingResponse = await pinecone.inference.embed(
         'llama-text-embed-v2',
         batchTexts,
@@ -96,14 +100,14 @@ export default async function handler(req, res) {
       );
 
       if (!embeddingResponse || !embeddingResponse.data) {
-        throw new Error('Invalid embedding response from Pinecone');
+        throw new Error(`Invalid embedding response from Pinecone at Batch ${batchNum}`);
       }
 
       embeddingResponse.data.forEach((data, indexInBatch) => {
         const chunk = currentBatch[indexInBatch];
         vectors.push({
           id: `${fileName}-${Date.now()}-${i + indexInBatch}`,
-          values: data.values, // Note: Pinecone returns 'values' not 'embedding'
+          values: data.values,
           metadata: {
             text: chunk.pageContent,
             source: fileName,
@@ -111,6 +115,12 @@ export default async function handler(req, res) {
           },
         });
       });
+
+      // Throttle to respect Free Tier Limits (250k tokens/min)
+      if (batchNum < totalBatches) {
+        console.log(`Rate-limit avoidance: sleeping for 1s after Batch ${batchNum}...`);
+        await sleep(1000);
+      }
     }
 
     // Upsert vectors to Pinecone in batches
