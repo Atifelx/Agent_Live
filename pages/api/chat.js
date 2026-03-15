@@ -103,7 +103,7 @@ async function searchWeb(query) {
 }
 
 // Agentic AI: Multi-Tool Facilitator (Recursive Reasoning Loop)
-async function processWithAgent(userMessage, chatHistory = [], activeDocs = []) {
+async function processWithAgent(userMessage, chatHistory = [], activeDocs = [], onStream = () => { }) {
   const libraryContext = activeDocs.length > 0
     ? `Currently active in your SECURE PRIVATE LIBRARY: [${activeDocs.join(', ')}].`
     : "Your private library is currently empty. Direct the user to upload documents if they ask about private files.";
@@ -125,11 +125,7 @@ THINKING PROTOCOL:
 YOUR VOICE:
 - **Natural & Human**: Professional yet conversational.
 - **Synthesis over Extraction**: Connect the dots across different search results.
-- **No Technical Leaks**: NEVER show "TOOL:" or "QUERY:" in your final answer.
-
-RESPONSE FORMAT:
-- To use a tool, respond ONLY with: TOOL: <toolName> \n QUERY: <searchQuery>
-- To give the final answer, respond with your natural synthesis.`;
+- **No Technical Leaks**: NEVER show "TOOL:" or "QUERY:" in your final answer.`;
 
   let currentMessages = [
     { role: 'system', content: systemPrompt },
@@ -142,11 +138,13 @@ RESPONSE FORMAT:
 
   let turns = 0;
   const maxTurns = 4;
-  let finalResult = { answer: "I'm having trouble reasoning through that. Could you rephrase?", usedTool: false };
+  let accumulatedSources = [];
 
   while (turns < maxTurns) {
     turns++;
-    console.log(`--- Reasoning Turn ${turns} ---`);
+
+    // Broadcast status to client
+    onStream('thought', turns === 1 ? 'Analyzing intelligence requirements...' : 'Synthesizing knowledge layers...');
 
     const response = await openai.chat.completions.create({
       model: CHAT_MODEL,
@@ -155,7 +153,6 @@ RESPONSE FORMAT:
     });
 
     const agentResponse = response.choices[0].message.content;
-    console.log(`Agent Thought: ${agentResponse.substring(0, 100)}...`);
 
     // Enhanced Tool Detection
     let toolName = null;
@@ -168,7 +165,6 @@ RESPONSE FORMAT:
       toolName = toolMatch[1].trim();
       searchQuery = queryMatch[1].trim();
     } else {
-      // Fallback: Check for JSON-style calls
       try {
         const jsonMatch = agentResponse.match(/\{[\s\S]*"tool"[\s\S]*"query"[\s\S]*\}/);
         if (jsonMatch) {
@@ -182,7 +178,10 @@ RESPONSE FORMAT:
     }
 
     if (toolName && searchQuery) {
-      console.log(`Executing Tool: ${toolName} | Query: ${searchQuery}`);
+      // Step-by-step thinking visualization
+      const actionLabel = toolName === 'searchDocuments' ? 'Sifting through private library' : 'Scanning live web signals';
+      onStream('thought', `${actionLabel}: "${searchQuery}"`);
+
       let toolResult = null;
       if (toolName === 'searchDocuments') {
         toolResult = await searchDocuments(searchQuery);
@@ -191,63 +190,66 @@ RESPONSE FORMAT:
       }
 
       if (toolResult && toolResult.success) {
-        // Add thought and observation to history
         currentMessages.push({ role: 'assistant', content: agentResponse });
         currentMessages.push({
           role: 'user',
           content: `OBSERVATION from ${toolName}:\n${toolResult.context}\n\nDoes this complete the user's request? If you need another step (e.g. web search for examples), perform it now. Otherwise, give the final answer.`
         });
 
-        // Track stats for the final return
-        finalResult.usedTool = true;
-        finalResult.toolName = toolName;
-        finalResult.toolQuery = searchQuery;
-        if (toolResult.results) {
-          finalResult.sources = [...(finalResult.sources || []), ...toolResult.results.map(r => r.source)];
-        } else if (toolResult.sources) {
-          finalResult.sources = [...(finalResult.sources || []), ...toolResult.sources];
-        }
+        if (toolResult.results) accumulatedSources.push(...toolResult.results.map(r => r.source));
+        if (toolResult.sources) accumulatedSources.push(...toolResult.sources);
       } else {
         currentMessages.push({ role: 'assistant', content: agentResponse });
-        currentMessages.push({ role: 'user', content: `Tool Error: ${toolResult?.message || 'Unknown error'}. Please try to answer with what you know or attempt a different search.` });
+        currentMessages.push({ role: 'user', content: `Tool Error: ${toolResult?.message || 'Unknown error'}.` });
       }
     } else {
-      // No tool call -> Final Human Answer
-      let finalAnswer = agentResponse;
+      // No tool call -> Streaming Final Answer Phase
+      onStream('thought', 'Neural synthesis complete. Rendering response.');
+      onStream('sources', [...new Set(accumulatedSources)].join(','));
 
-      // Ironclad Technical Cleanup
-      finalAnswer = finalAnswer
-        .replace(/\{[\s\S]*"tool"[\s\S]*"query"[\s\S]*\}/gi, '')
-        .replace(/TOOL:\s*\w+/gi, '')
-        .replace(/QUERY:\s*.+/gi, '')
-        .replace(/OBSERVATION from [\s\S]*?:/gi, '')
-        .trim();
+      const finalStream = await openai.chat.completions.create({
+        model: CHAT_MODEL,
+        messages: currentMessages,
+        temperature: 0.7, // Higher temp for natural voice
+        stream: true,
+      });
 
-      return {
-        ...finalResult,
-        answer: finalAnswer,
-      };
+      for await (const chunk of finalStream) {
+        const content = chunk.choices[0]?.delta?.content || "";
+        if (content) {
+          onStream('answer', content);
+        }
+      }
+      return;
     }
   }
-
-  return finalResult;
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  // Set headers for streaming
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
   try {
     const { message, chatHistory, activeDocs } = req.body;
-    if (!message) return res.status(400).json({ error: 'Message is required' });
+    if (!message) {
+      res.write('ERR:Message required\n');
+      return res.end();
+    }
 
-    const result = await processWithAgent(message, chatHistory || [], activeDocs || []);
-    return res.status(200).json({ success: true, ...result });
+    await processWithAgent(message, chatHistory || [], activeDocs || [], (type, content) => {
+      // Clean content for protocol safety
+      const cleanContent = content.replace(/\n/g, ' ');
+      res.write(`${type.toUpperCase()}:${content}\n`);
+    });
+
+    res.end();
   } catch (error) {
     console.error('Chat error:', error);
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to process message',
-      details: error.error?.message || error.message,
-    });
+    res.write(`ERR:${error.message}\n`);
+    res.end();
   }
 }

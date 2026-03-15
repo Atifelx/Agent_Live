@@ -15,6 +15,7 @@ import {
   BrainCircuit,
   Search,
   CheckCircle2,
+  ChevronRight,
   Loader2,
   BookOpen,
   Sparkles,
@@ -173,7 +174,7 @@ export default function Home() {
     setLoading(false);
   };
 
-  // Handle chat
+  // Handle chat with real-time streaming thoughts
   const handleSend = async () => {
     if (!input.trim() || loading) return;
 
@@ -183,6 +184,15 @@ export default function Home() {
 
     const newMessages = [...messages, { role: 'user', content: userMessage }];
     setMessages(newMessages);
+
+    // Placeholder for assistant response
+    const assistantIndex = newMessages.length;
+    setMessages([...newMessages, {
+      role: 'assistant',
+      content: '',
+      thinkingSteps: [],
+      loadingThoughts: true
+    }]);
 
     try {
       const response = await fetch('/api/chat', {
@@ -195,24 +205,69 @@ export default function Home() {
         }),
       });
 
-      const data = await response.json();
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedContent = '';
+      let accumulatedThoughts = [];
+      let accumulatedSources = [];
 
-      if (data.success) {
-        setMessages([...newMessages, {
-          role: 'assistant',
-          content: data.answer,
-          usedTool: data.usedTool,
-          toolQuery: data.toolQuery,
-          sources: data.sources
-        }]);
-      } else {
-        setMessages([...newMessages, {
-          role: 'assistant',
-          content: `Error: ${data.details || data.error}`
-        }]);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        lines.forEach(line => {
+          if (line.startsWith('THOUGHT:')) {
+            const thought = line.replace('THOUGHT:', '').trim();
+            if (thought) {
+              accumulatedThoughts.push(thought);
+              setMessages(prev => {
+                const updated = [...prev];
+                updated[assistantIndex] = { ...updated[assistantIndex], thinkingSteps: [...accumulatedThoughts] };
+                return updated;
+              });
+            }
+          } else if (line.startsWith('SOURCE:')) {
+            const sourcesList = line.replace('SOURCE:', '').trim();
+            if (sourcesList) {
+              accumulatedSources = sourcesList.split(',').map(s => s.trim());
+              setMessages(prev => {
+                const updated = [...prev];
+                updated[assistantIndex] = { ...updated[assistantIndex], sources: accumulatedSources, usedTool: true };
+                return updated;
+              });
+            }
+          } else if (line.startsWith('ANSWER:')) {
+            const content = line.replace('ANSWER:', '');
+            accumulatedContent += content;
+            setMessages(prev => {
+              const updated = [...prev];
+              updated[assistantIndex] = {
+                ...updated[assistantIndex],
+                content: accumulatedContent,
+                loadingThoughts: false
+              };
+              return updated;
+            });
+          } else if (line.startsWith('ERR:')) {
+            const error = line.replace('ERR:', '').trim();
+            setMessages(prev => {
+              const updated = [...prev];
+              updated[assistantIndex] = { ...updated[assistantIndex], content: `System Error: ${error}`, loadingThoughts: false };
+              return updated;
+            });
+          }
+        });
       }
     } catch (error) {
-      setMessages([...newMessages, { role: 'assistant', content: `Error: ${error.message}` }]);
+      console.error('Streaming Error:', error);
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[assistantIndex] = { ...updated[assistantIndex], content: `Critical Error: ${error.message}`, loadingThoughts: false };
+        return updated;
+      });
     }
     setLoading(false);
   };
@@ -383,17 +438,46 @@ export default function Home() {
                 ) : (
                   messages.map((msg, idx) => (
                     <div key={idx} className={`flex items-start ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out`}>
-                      <div className={`max-w-[80%] space-y-4`}>
-                        <div className={`px-7 py-5 rounded-[2rem] text-base leading-[1.6] shadow-2xl ${msg.role === 'user'
-                          ? 'bg-zinc-100 text-zinc-900 font-semibold ml-16 shadow-white/5'
-                          : 'bg-zinc-900/80 border border-zinc-800 text-zinc-100 mr-16 border-white/5'
-                          }`}>
-                          <div className="prose-aura">
-                            <ReactMarkdown>
-                              {msg.content}
-                            </ReactMarkdown>
+                      <div className={`max-w-[85%] space-y-4`}>
+
+                        {/* Thinking Artifact (Real-time Reasoning) */}
+                        {msg.role === 'assistant' && msg.thinkingSteps && msg.thinkingSteps.length > 0 && (
+                          <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6 mb-2 backdrop-blur-sm shadow-xl border-white/5 animate-in zoom-in-95 duration-500">
+                            <div className="flex items-center space-x-3 mb-4">
+                              <div className="w-8 h-8 bg-zinc-800 rounded-lg flex items-center justify-center">
+                                <BrainCircuit className="w-4 h-4 text-emerald-500 animate-pulse" />
+                              </div>
+                              <span className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-400">Agentic Reasoning Path</span>
+                            </div>
+                            <div className="space-y-3">
+                              {msg.thinkingSteps.map((step, sIdx) => (
+                                <div key={sIdx} className="flex items-start space-x-3 text-sm text-zinc-300 animate-in fade-in slide-in-from-left-2 duration-300">
+                                  {sIdx === msg.thinkingSteps.length - 1 && msg.loadingThoughts ? (
+                                    <Loader2 className="w-4 h-4 text-emerald-500 animate-spin mt-0.5" />
+                                  ) : (
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5" />
+                                  )}
+                                  <span className={sIdx === msg.thinkingSteps.length - 1 && msg.loadingThoughts ? "text-zinc-100 font-medium" : "text-zinc-400"}>
+                                    {step}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        )}
+
+                        {(msg.content || msg.role === 'user') && (
+                          <div className={`px-7 py-5 rounded-[2rem] text-base leading-[1.6] shadow-2xl ${msg.role === 'user'
+                            ? 'bg-zinc-100 text-zinc-900 font-semibold ml-16 shadow-white/5'
+                            : 'bg-zinc-900/80 border border-zinc-800 text-zinc-100 mr-16 border-white/5'
+                            }`}>
+                            <div className="prose-aura">
+                              <ReactMarkdown>
+                                {msg.content}
+                              </ReactMarkdown>
+                            </div>
+                          </div>
+                        )}
 
                         {msg.role === 'assistant' && msg.usedTool && (
                           <div className="flex flex-col space-y-3 ml-6 animate-in fade-in slide-in-from-top-2 duration-500">
@@ -417,17 +501,7 @@ export default function Home() {
                     </div>
                   ))
                 )}
-                {loading && (
-                  <div className="flex justify-start animate-in fade-in duration-300 ml-2">
-                    <div className="bg-zinc-900/60 border border-zinc-800 rounded-3xl px-8 py-5 shadow-inner">
-                      <div className="flex space-x-2.5">
-                        <div className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
-                        <div className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0.25s' }} />
-                        <div className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0.5s' }} />
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* Clean background loading state removed for Thinking Artifact */}
               </div>
             </ScrollArea>
 
