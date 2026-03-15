@@ -207,17 +207,22 @@ export default function Home() {
     setInput('');
     setLoading(true);
 
-    const newMessages = [...messages, { role: 'user', content: userMessage }];
-    setMessages(newMessages);
+    let assistantIndex = -1;
 
-    // Placeholder for assistant response (FIX: Add immediate warming step)
-    const assistantIndex = newMessages.length;
-    setMessages([...newMessages, {
-      role: 'assistant',
-      content: '',
-      thinkingSteps: ['Waking up intelligence engine...'],
-      loadingThoughts: true
-    }]);
+    // Unified State update: Add user message AND assistant placeholder in one go
+    setMessages(prev => {
+      const nextMessages = [...prev, { role: 'user', content: userMessage }];
+      assistantIndex = nextMessages.length; // Capture index for the assistant response
+      return [
+        ...nextMessages,
+        {
+          role: 'assistant',
+          content: '',
+          thinkingSteps: ['Waking up intelligence engine...'],
+          loadingThoughts: true
+        }
+      ];
+    });
 
     try {
       const response = await fetch('/api/chat', {
@@ -225,7 +230,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMessage,
-          chatHistory: messages,
+          chatHistory: messages, // History before the current question
           activeDocs: uploadedDocs
         }),
       });
@@ -235,27 +240,32 @@ export default function Home() {
       let accumulatedContent = '';
       let accumulatedThoughts = ['Waking up intelligence engine...'];
       let accumulatedSources = [];
+      let streamBuffer = ''; // BUFFER TO PREVENT JSON FRAGMENTATION
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        // Append to buffer and split by newline
+        streamBuffer += decoder.decode(value, { stream: true });
+        const lines = streamBuffer.split('\n');
 
-        lines.forEach(line => {
-          if (!line.trim()) return;
+        // Keep the last partial line in the buffer
+        streamBuffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
           try {
             const data = JSON.parse(line);
             const { type, content } = data;
 
             if (type === 'thought') {
-              // Deduplicate or append thoughts
               if (!accumulatedThoughts.includes(content)) {
                 accumulatedThoughts.push(content);
                 setMessages(prev => {
                   const updated = [...prev];
-                  updated[assistantIndex] = { ...updated[assistantIndex], thinkingSteps: [...accumulatedThoughts] };
+                  const idx = assistantIndex !== -1 ? assistantIndex : updated.length - 1;
+                  updated[idx] = { ...updated[idx], thinkingSteps: [...accumulatedThoughts] };
                   return updated;
                 });
               }
@@ -264,7 +274,8 @@ export default function Home() {
                 accumulatedSources = content.split(',').map(s => s.trim());
                 setMessages(prev => {
                   const updated = [...prev];
-                  updated[assistantIndex] = { ...updated[assistantIndex], sources: accumulatedSources, usedTool: true };
+                  const idx = assistantIndex !== -1 ? assistantIndex : updated.length - 1;
+                  updated[idx] = { ...updated[idx], sources: accumulatedSources, usedTool: true };
                   return updated;
                 });
               }
@@ -272,8 +283,9 @@ export default function Home() {
               accumulatedContent += content;
               setMessages(prev => {
                 const updated = [...prev];
-                updated[assistantIndex] = {
-                  ...updated[assistantIndex],
+                const idx = assistantIndex !== -1 ? assistantIndex : updated.length - 1;
+                updated[idx] = {
+                  ...updated[idx],
                   content: accumulatedContent,
                   loadingThoughts: false
                 };
@@ -282,20 +294,22 @@ export default function Home() {
             } else if (type === 'err') {
               setMessages(prev => {
                 const updated = [...prev];
-                updated[assistantIndex] = { ...updated[assistantIndex], content: `System Error: ${content}`, loadingThoughts: false };
+                const idx = assistantIndex !== -1 ? assistantIndex : updated.length - 1;
+                updated[idx] = { ...updated[idx], content: `System Error: ${content}`, loadingThoughts: false };
                 return updated;
               });
             }
           } catch (e) {
-            // Internal chunk, skip
+            console.error('Buffer Parse Error (likely fragmented JSON):', e, 'Line:', line);
           }
-        });
+        }
       }
     } catch (error) {
       console.error('Streaming Error:', error);
       setMessages(prev => {
         const updated = [...prev];
-        updated[assistantIndex] = { ...updated[assistantIndex], content: `Critical Error: ${error.message}`, loadingThoughts: false };
+        const idx = assistantIndex !== -1 ? assistantIndex : updated.length - 1;
+        updated[idx] = { ...updated[idx], content: `Critical Connection Error: ${error.message}`, loadingThoughts: false };
         return updated;
       });
     }

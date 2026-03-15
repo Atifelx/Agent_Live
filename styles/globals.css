@@ -110,10 +110,12 @@
   .prose-aura {
     color: inherit;
     max-width: none;
+    word-break: break-word;
   }
 
   .prose-aura p {
     margin-bottom: 1.25rem;
+    color: inherit;
   }
 
   .prose-aura p:last-child {
@@ -127,11 +129,23 @@
     margin-top: 1.5rem;
     margin-bottom: 0.75rem;
     color: #fff;
+    font-weight: 700;
   }
 
   .prose-aura strong {
     color: #fff;
-    font-weight: 700;
+    font-weight: 800;
+  }
+
+  .prose-aura ul,
+  .prose-aura ol {
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+    padding-left: 1.5rem;
+  }
+
+  .prose-aura li {
+    margin-bottom: 0.5rem;
   }
 
   .prose-aura code {
