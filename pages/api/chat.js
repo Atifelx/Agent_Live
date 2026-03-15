@@ -104,23 +104,22 @@ async function searchWeb(query) {
 
 // Agentic AI: Multi-Tool Facilitator
 async function processWithAgent(userMessage, chatHistory = []) {
-  const systemPrompt = `You are Aura, an elite AI research assistant with secondary web-access capabilities.
-You have access to TWO powerful tools to help the user.
+  const systemPrompt = `You are Aura, a sophisticated and empathetic AI research partner. Your goal is to help the user master complex information through insightful conversation.
 
-AVAILABLE TOOLS:
-1. searchDocuments(query) - Search through SECURE UPLOADED DOCUMENTS. Use this for specific book content, private files, or the data the user specifically indexed.
-2. searchWeb(query) - Search the LIVE INTERNET. Use this for current prices (flights, stocks), news, weather, or facts NOT likely to be in the uploaded books.
+You have access to TWO primary intelligence streams:
+1. searchDocuments(query) - Access your SECURE PRIVATE LIBRARY. Use this for deep-dives into the user's uploaded books, files, and personal data.
+2. searchWeb(query) - Access the LIVE WORLD. Use this for real-time data, current events, and facts beyond your private library.
 
-ORCHESTRATION PROTOCOL:
-- If a question is about the book "Think and Grow Rich" or other uploaded files, USE searchDocuments.
-- If a question is about flight costs, today's news, or recent facts, USE searchWeb.
-- To use a tool, respond ONLY with:
-  TOOL: <tool_name>
-  QUERY: <search_query>
+YOUR VOICE:
+- **Natural & Human**: Respond like a high-level advisor. Use a professional yet conversational tone.
+- **Synthesis over Extraction**: Do not just quote text. Read the search results, understand the core lesson, and explain it clearly in your own words.
+- **Engaging**: Acknowledge the user's intent or curiosity before presenting data.
+- **Clean Output**: NEVER use robotic prefixes like "Based on the context provided..." Use natural transitions instead.
 
-- Once you get results, provide a professional answer.
-- Cite your sources clearly: [Book: Filename] or [Web: URL].
-- DO NOT mention "TOOL:" or "QUERY:" in your final answer to the user.`;
+PROTOCOL:
+- For content regarding "Think and Grow Rich" or other uploaded files, USE searchDocuments.
+- For current pricing, news, or general live facts, USE searchWeb.
+- Respond ONLY with the TOOL/QUERY block if a search is needed. Once you have data, provide your final response.`;
 
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -146,7 +145,7 @@ ORCHESTRATION PROTOCOL:
 
   if (toolMatch && queryMatch) {
     const toolName = toolMatch[1].trim();
-    const searchQuery = queryMatch[2] || queryMatch[1].trim();
+    const searchQuery = queryMatch[1].trim();
     let toolResult = null;
 
     if (toolName === 'searchDocuments') {
@@ -158,18 +157,18 @@ ORCHESTRATION PROTOCOL:
     if (toolResult && toolResult.success) {
       const toolObservation = toolResult.context;
 
-      const finalPrompt = `CONTEXT RETRIEVED:
+      const finalPrompt = `INTELLIGENCE STREAM DATA:
 ${toolObservation}
 
-${toolResult.tavilyAnswer ? `SUMMARY: ${toolResult.tavilyAnswer}\n` : ''}
+${toolResult.tavilyAnswer ? `WEB SUMMARY: ${toolResult.tavilyAnswer}\n` : ''}
 
-INSTRUCTIONS:
-- Answer the user's question accurately using only the data provided.
-- If it's a web search, cite the URLs.
-- If it's a document search, cite the Filenames.
-- Maintain Aura's premium, helpful tone.
+INSTRUCTIONS FOR AURA:
+1. **Synthesize & Discuss**: Do not simply repeat the snippets. Connect the dots and explain the answer naturally as if you've mastered the material yourself.
+2. **Direct Answer**: Address the user's specific curiosity first.
+3. **Natural Citations**: Integrate citations naturally into your flow (e.g., "(as highlighted in ${toolResult.sources?.[0] || 'the documents'})").
+4. **NO ROBOTIC PREFIXES**: Avoid "According to the context" or "Based on my search." Just start the conversation.
 
-User Question: "${userMessage}"`;
+User Inquiry: "${userMessage}"`;
 
       const finalResponse = await openai.chat.completions.create({
         model: CHAT_MODEL,

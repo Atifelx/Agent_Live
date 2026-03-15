@@ -21,7 +21,8 @@ import {
   Database,
   History
 } from "lucide-react";
-import ReactMarkdown from 'react-markdown';
+import dynamic from 'next/dynamic';
+const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false });
 
 export default function Home() {
   const [messages, setMessages] = useState([]);
@@ -354,8 +355,8 @@ export default function Home() {
                     <div key={idx} className={`flex items-start ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out`}>
                       <div className={`max-w-[80%] space-y-4`}>
                         <div className={`px-7 py-5 rounded-[2rem] text-base leading-[1.6] shadow-2xl ${msg.role === 'user'
-                            ? 'bg-zinc-100 text-zinc-900 font-semibold ml-16 shadow-white/5'
-                            : 'bg-zinc-900/80 border border-zinc-800 text-zinc-100 mr-16 border-white/5'
+                          ? 'bg-zinc-100 text-zinc-900 font-semibold ml-16 shadow-white/5'
+                          : 'bg-zinc-900/80 border border-zinc-800 text-zinc-100 mr-16 border-white/5'
                           }`}>
                           <div className="prose-aura">
                             <ReactMarkdown>
