@@ -174,6 +174,32 @@ export default function Home() {
     setLoading(false);
   };
 
+  // Session-Aware Initialization
+  const [messages, setMessages] = useState([]);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Load history on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('clever_chat_history');
+    if (saved) {
+      try {
+        setMessages(JSON.parse(saved));
+      } catch (e) {
+        setMessages([{ role: 'assistant', content: "Neural session restored. How can I help you today?" }]);
+      }
+    } else {
+      setMessages([{ role: 'assistant', content: "Hello! I am Clever Chat. Upload a document to start our deep-dive, or ask me anything from the live web." }]);
+    }
+    setIsLoaded(true);
+  }, []);
+
+  // Save history on change
+  useEffect(() => {
+    if (isLoaded && messages.length > 0) {
+      localStorage.setItem('clever_chat_history', JSON.stringify(messages));
+    }
+  }, [messages, isLoaded]);
+
   // Handle chat with real-time streaming thoughts
   const handleSend = async () => {
     if (!input.trim() || loading) return;
@@ -185,12 +211,12 @@ export default function Home() {
     const newMessages = [...messages, { role: 'user', content: userMessage }];
     setMessages(newMessages);
 
-    // Placeholder for assistant response
+    // Placeholder for assistant response (FIX: Add immediate warming step)
     const assistantIndex = newMessages.length;
     setMessages([...newMessages, {
       role: 'assistant',
       content: '',
-      thinkingSteps: [],
+      thinkingSteps: ['Waking up intelligence engine...'],
       loadingThoughts: true
     }]);
 
@@ -208,7 +234,7 @@ export default function Home() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let accumulatedContent = '';
-      let accumulatedThoughts = [];
+      let accumulatedThoughts = ['Waking up intelligence engine...'];
       let accumulatedSources = [];
 
       while (true) {
@@ -225,12 +251,15 @@ export default function Home() {
             const { type, content } = data;
 
             if (type === 'thought') {
-              accumulatedThoughts.push(content);
-              setMessages(prev => {
-                const updated = [...prev];
-                updated[assistantIndex] = { ...updated[assistantIndex], thinkingSteps: [...accumulatedThoughts] };
-                return updated;
-              });
+              // Deduplicate or append thoughts
+              if (!accumulatedThoughts.includes(content)) {
+                accumulatedThoughts.push(content);
+                setMessages(prev => {
+                  const updated = [...prev];
+                  updated[assistantIndex] = { ...updated[assistantIndex], thinkingSteps: [...accumulatedThoughts] };
+                  return updated;
+                });
+              }
             } else if (type === 'sources') {
               if (content) {
                 accumulatedSources = content.split(',').map(s => s.trim());
@@ -259,7 +288,7 @@ export default function Home() {
               });
             }
           } catch (e) {
-            console.error('JSON Parse Error in stream:', e, 'Line:', line);
+            // Internal chunk, skip
           }
         });
       }
