@@ -175,29 +175,30 @@ export default function Home() {
     setLoading(false);
   };
 
-  // Session-Aware Initialization (Logic only, states moved to top)
-
-  // Load history on mount
+  const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    const saved = localStorage.getItem('clever_chat_history');
-    if (saved) {
+    setMounted(true);
+    const savedDocs = localStorage.getItem('aura_indexed_docs');
+    if (savedDocs) setUploadedDocs(JSON.parse(savedDocs));
+
+    const savedChat = localStorage.getItem('clever_chat_history');
+    if (savedChat) {
       try {
-        setMessages(JSON.parse(saved));
+        setMessages(JSON.parse(savedChat));
       } catch (e) {
-        setMessages([{ role: 'assistant', content: "Neural session restored. How can I help you today?" }]);
+        setMessages([{ role: 'assistant', content: "Neural session restored. How can I help you?" }]);
       }
     } else {
       setMessages([{ role: 'assistant', content: "Hello! I am Clever Chat. Upload a document to start our deep-dive, or ask me anything from the live web." }]);
     }
-    setIsLoaded(true);
   }, []);
 
   // Save history on change
   useEffect(() => {
-    if (isLoaded && messages.length > 0) {
+    if (mounted && messages.length > 0) {
       localStorage.setItem('clever_chat_history', JSON.stringify(messages));
     }
-  }, [messages, isLoaded]);
+  }, [messages, mounted]);
 
   // Handle chat with real-time streaming thoughts
   const handleSend = async () => {
@@ -207,22 +208,17 @@ export default function Home() {
     setInput('');
     setLoading(true);
 
-    let assistantIndex = -1;
-
-    // Unified State update: Add user message AND assistant placeholder in one go
-    setMessages(prev => {
-      const nextMessages = [...prev, { role: 'user', content: userMessage }];
-      assistantIndex = nextMessages.length; // Capture index for the assistant response
-      return [
-        ...nextMessages,
-        {
-          role: 'assistant',
-          content: '',
-          thinkingSteps: ['Waking up intelligence engine...'],
-          loadingThoughts: true
-        }
-      ];
-    });
+    // Atomic update: User msg + Assistant placeholder
+    setMessages(prev => [
+      ...prev,
+      { role: 'user', content: userMessage },
+      {
+        role: 'assistant',
+        content: '',
+        thinkingSteps: ['Waking up intelligence engine...'],
+        loadingThoughts: true
+      }
+    ]);
 
     try {
       const response = await fetch('/api/chat', {
@@ -230,7 +226,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMessage,
-          chatHistory: messages, // History before the current question
+          chatHistory: messages,
           activeDocs: uploadedDocs
         }),
       });
@@ -240,81 +236,77 @@ export default function Home() {
       let accumulatedContent = '';
       let accumulatedThoughts = ['Waking up intelligence engine...'];
       let accumulatedSources = [];
-      let streamBuffer = ''; // BUFFER TO PREVENT JSON FRAGMENTATION
+      let streamBuffer = '';
+
+      const processLine = (line) => {
+        if (!line.trim()) return;
+        try {
+          const data = JSON.parse(line);
+          const { type, content } = data;
+
+          setMessages(prev => {
+            const updated = [...prev];
+            const idx = updated.findLastIndex(m => m.role === 'assistant');
+            if (idx === -1) return updated;
+
+            if (type === 'thought') {
+              if (!accumulatedThoughts.includes(content)) {
+                accumulatedThoughts.push(content);
+                updated[idx] = { ...updated[idx], thinkingSteps: [...accumulatedThoughts] };
+              }
+            } else if (type === 'sources') {
+              accumulatedSources = content.split(',').map(s => s.trim());
+              updated[idx] = { ...updated[idx], sources: accumulatedSources, usedTool: true };
+            } else if (type === 'answer') {
+              accumulatedContent += content;
+              updated[idx] = {
+                ...updated[idx],
+                content: accumulatedContent,
+                loadingThoughts: false
+              };
+            } else if (type === 'err') {
+              updated[idx] = { ...updated[idx], content: `System Error: ${content}`, loadingThoughts: false };
+            }
+            return updated;
+          });
+        } catch (e) {
+          // Fragmented JSON, wait for next chunk
+        }
+      };
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        // Append to buffer and split by newline
         streamBuffer += decoder.decode(value, { stream: true });
         const lines = streamBuffer.split('\n');
-
-        // Keep the last partial line in the buffer
-        streamBuffer = lines.pop();
+        streamBuffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const data = JSON.parse(line);
-            const { type, content } = data;
-
-            if (type === 'thought') {
-              if (!accumulatedThoughts.includes(content)) {
-                accumulatedThoughts.push(content);
-                setMessages(prev => {
-                  const updated = [...prev];
-                  const idx = assistantIndex !== -1 ? assistantIndex : updated.length - 1;
-                  updated[idx] = { ...updated[idx], thinkingSteps: [...accumulatedThoughts] };
-                  return updated;
-                });
-              }
-            } else if (type === 'sources') {
-              if (content) {
-                accumulatedSources = content.split(',').map(s => s.trim());
-                setMessages(prev => {
-                  const updated = [...prev];
-                  const idx = assistantIndex !== -1 ? assistantIndex : updated.length - 1;
-                  updated[idx] = { ...updated[idx], sources: accumulatedSources, usedTool: true };
-                  return updated;
-                });
-              }
-            } else if (type === 'answer') {
-              accumulatedContent += content;
-              setMessages(prev => {
-                const updated = [...prev];
-                const idx = assistantIndex !== -1 ? assistantIndex : updated.length - 1;
-                updated[idx] = {
-                  ...updated[idx],
-                  content: accumulatedContent,
-                  loadingThoughts: false
-                };
-                return updated;
-              });
-            } else if (type === 'err') {
-              setMessages(prev => {
-                const updated = [...prev];
-                const idx = assistantIndex !== -1 ? assistantIndex : updated.length - 1;
-                updated[idx] = { ...updated[idx], content: `System Error: ${content}`, loadingThoughts: false };
-                return updated;
-              });
-            }
-          } catch (e) {
-            console.error('Buffer Parse Error (likely fragmented JSON):', e, 'Line:', line);
-          }
+          processLine(line);
         }
       }
+
+      // Flush remaining buffer
+      if (streamBuffer.trim()) {
+        processLine(streamBuffer);
+      }
+
     } catch (error) {
       console.error('Streaming Error:', error);
       setMessages(prev => {
         const updated = [...prev];
-        const idx = assistantIndex !== -1 ? assistantIndex : updated.length - 1;
-        updated[idx] = { ...updated[idx], content: `Critical Connection Error: ${error.message}`, loadingThoughts: false };
+        const idx = updated.findLastIndex(m => m.role === 'assistant');
+        if (idx !== -1) {
+          updated[idx] = { ...updated[idx], content: `Connection Error: ${error.message}`, loadingThoughts: false };
+        }
         return updated;
       });
     }
     setLoading(false);
   };
+
+  if (!mounted) return null;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 selection:bg-zinc-700">
