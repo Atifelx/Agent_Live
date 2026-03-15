@@ -357,9 +357,11 @@ export default function Home() {
                             ? 'bg-zinc-100 text-zinc-900 font-semibold ml-16 shadow-white/5'
                             : 'bg-zinc-900/80 border border-zinc-800 text-zinc-100 mr-16 border-white/5'
                           }`}>
-                          <ReactMarkdown className="prose-aura">
-                            {msg.content}
-                          </ReactMarkdown>
+                          <div className="prose-aura">
+                            <ReactMarkdown>
+                              {msg.content}
+                            </ReactMarkdown>
+                          </div>
                         </div>
 
                         {msg.role === 'assistant' && msg.usedTool && (
