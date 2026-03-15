@@ -66,8 +66,8 @@ export default async function handler(req, res) {
 
     // Split text into chunks
     const textSplitter = new RecursiveCharacterTextSplitter({
-      chunkSize: 1000,
-      chunkOverlap: 200,
+      chunkSize: 800,   // Smaller chunks = better RAG retrieval accuracy
+      chunkOverlap: 150,
     });
 
     const chunks = await textSplitter.createDocuments([text]);
@@ -88,8 +88,9 @@ export default async function handler(req, res) {
       const batchTexts = currentBatch.map(c => c.pageContent);
 
       // Generate embeddings via Pinecone Inference
+      // IMPORTANT: Must match the model used when the index was created (llama-text-embed-v2)
       const embeddingResponse = await pinecone.inference.embed(
-        'multilingual-e5-large', // Standard hosted model (1024 dims)
+        'llama-text-embed-v2',
         batchTexts,
         { inputType: 'passage', truncate: 'END' }
       );
@@ -135,11 +136,11 @@ export default async function handler(req, res) {
   }
 }
 
-// Increase payload size limit for file uploads
+// Increase payload size limit for large file uploads (10MB PDF ~ 13MB base64)
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '10mb',
+      sizeLimit: '50mb',
     },
   },
 };

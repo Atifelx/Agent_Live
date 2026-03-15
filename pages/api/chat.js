@@ -26,9 +26,10 @@ async function searchDocuments(query) {
     const index = pinecone.index(process.env.PINECONE_INDEX_NAME);
 
     // Generate embedding for query via Pinecone Inference
+    // MUST match the model used when indexing documents (llama-text-embed-v2)
     console.log('Generating embedding for query using Pinecone:', query);
     const embeddingResponse = await pinecone.inference.embed(
-      'multilingual-e5-large',
+      'llama-text-embed-v2',
       [query],
       { inputType: 'query' }
     );
