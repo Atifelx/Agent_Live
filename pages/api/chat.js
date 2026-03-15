@@ -103,12 +103,18 @@ async function searchWeb(query) {
 }
 
 // Agentic AI: Multi-Tool Facilitator
-async function processWithAgent(userMessage, chatHistory = []) {
+async function processWithAgent(userMessage, chatHistory = [], activeDocs = []) {
+  const libraryContext = activeDocs.length > 0
+    ? `Currently active in your SECURE PRIVATE LIBRARY: [${activeDocs.join(', ')}].`
+    : "Your private library is currently empty. Direct the user to upload documents if they ask about private files.";
+
   const systemPrompt = `You are Clever Chat, a sophisticated and empathetic AI research partner. Your goal is to help the user master complex information through insightful conversation.
 
+${libraryContext}
+
 You have access to TWO primary intelligence streams:
-1. searchDocuments(query) - Access your SECURE PRIVATE LIBRARY. Use this for deep-dives into the user's uploaded books, files, and personal data.
-2. searchWeb(query) - Access the LIVE WORLD. Use this for real-time data, current events, and facts beyond your private library.
+1. searchDocuments(query) - Search your SECURE PRIVATE LIBRARY. Use this for deep-dives into the user's specific uploaded files listed above.
+2. searchWeb(query) - Access the LIVE WORLD. Use this for real-time data, current events, and general facts beyond your private library.
 
 YOUR VOICE:
 - **Natural & Human**: Respond like a high-level advisor. Use a professional yet conversational tone.
@@ -117,7 +123,7 @@ YOUR VOICE:
 - **Clean Output**: NEVER use robotic prefixes like "Based on the context provided..." Use natural transitions instead.
 
 PROTOCOL:
-- For content regarding "Think and Grow Rich" or other uploaded files, USE searchDocuments.
+- If a question is about the documents currently in your library, YOU MUST USE searchDocuments.
 - For current pricing, news, or general live facts, USE searchWeb.
 - Respond ONLY with the TOOL/QUERY block if a search is needed. Once you have data, provide your final response.`;
 
@@ -211,10 +217,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { message, chatHistory } = req.body;
+    const { message, chatHistory, activeDocs } = req.body;
     if (!message) return res.status(400).json({ error: 'Message is required' });
 
-    const result = await processWithAgent(message, chatHistory || []);
+    const result = await processWithAgent(message, chatHistory || [], activeDocs || []);
     return res.status(200).json({ success: true, ...result });
   } catch (error) {
     console.error('Chat error:', error);

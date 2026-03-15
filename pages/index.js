@@ -188,7 +188,11 @@ export default function Home() {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage, chatHistory: messages }),
+        body: JSON.stringify({
+          message: userMessage,
+          chatHistory: messages,
+          activeDocs: uploadedDocs
+        }),
       });
 
       const data = await response.json();
