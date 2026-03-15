@@ -27,6 +27,7 @@ const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false });
 
 export default function Home() {
   const [messages, setMessages] = useState([]);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -174,9 +175,7 @@ export default function Home() {
     setLoading(false);
   };
 
-  // Session-Aware Initialization
-  const [messages, setMessages] = useState([]);
-  const [isLoaded, setIsLoaded] = useState(false);
+  // Session-Aware Initialization (Logic only, states moved to top)
 
   // Load history on mount
   useEffect(() => {
