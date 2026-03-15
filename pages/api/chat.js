@@ -143,7 +143,8 @@ YOUR VOICE:
   while (turns < maxTurns) {
     turns++;
 
-    // Broadcast status to client
+    // Broadcast status to client with slight delay for visibility
+    await sleep(800);
     onStream('thought', turns === 1 ? 'Analyzing intelligence requirements...' : 'Synthesizing knowledge layers...');
 
     const response = await openai.chat.completions.create({
@@ -180,6 +181,7 @@ YOUR VOICE:
     if (toolName && searchQuery) {
       // Step-by-step thinking visualization
       const actionLabel = toolName === 'searchDocuments' ? 'Sifting through private library' : 'Scanning live web signals';
+      await sleep(1000); // Give user time to read the intent
       onStream('thought', `${actionLabel}: "${searchQuery}"`);
 
       let toolResult = null;
@@ -204,6 +206,7 @@ YOUR VOICE:
       }
     } else {
       // No tool call -> Streaming Final Answer Phase
+      await sleep(800);
       onStream('thought', 'Neural synthesis complete. Rendering response.');
       onStream('sources', [...new Set(accumulatedSources)].join(','));
 
@@ -241,15 +244,16 @@ export default async function handler(req, res) {
     }
 
     await processWithAgent(message, chatHistory || [], activeDocs || [], (type, content) => {
-      // Clean content for protocol safety
-      const cleanContent = content.replace(/\n/g, ' ');
-      res.write(`${type.toUpperCase()}:${content}\n`);
+      res.write(JSON.stringify({ type, content }) + '\n');
     });
 
     res.end();
   } catch (error) {
     console.error('Chat error:', error);
-    res.write(`ERR:${error.message}\n`);
+    res.write(JSON.stringify({ type: 'err', content: error.message }) + '\n');
     res.end();
   }
 }
+
+// Helper: Delay for smoother AI "Thinking" visibility
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));

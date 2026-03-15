@@ -219,45 +219,47 @@ export default function Home() {
         const lines = chunk.split('\n');
 
         lines.forEach(line => {
-          if (line.startsWith('THOUGHT:')) {
-            const thought = line.replace('THOUGHT:', '').trim();
-            if (thought) {
-              accumulatedThoughts.push(thought);
+          if (!line.trim()) return;
+          try {
+            const data = JSON.parse(line);
+            const { type, content } = data;
+
+            if (type === 'thought') {
+              accumulatedThoughts.push(content);
               setMessages(prev => {
                 const updated = [...prev];
                 updated[assistantIndex] = { ...updated[assistantIndex], thinkingSteps: [...accumulatedThoughts] };
                 return updated;
               });
-            }
-          } else if (line.startsWith('SOURCE:')) {
-            const sourcesList = line.replace('SOURCE:', '').trim();
-            if (sourcesList) {
-              accumulatedSources = sourcesList.split(',').map(s => s.trim());
+            } else if (type === 'sources') {
+              if (content) {
+                accumulatedSources = content.split(',').map(s => s.trim());
+                setMessages(prev => {
+                  const updated = [...prev];
+                  updated[assistantIndex] = { ...updated[assistantIndex], sources: accumulatedSources, usedTool: true };
+                  return updated;
+                });
+              }
+            } else if (type === 'answer') {
+              accumulatedContent += content;
               setMessages(prev => {
                 const updated = [...prev];
-                updated[assistantIndex] = { ...updated[assistantIndex], sources: accumulatedSources, usedTool: true };
+                updated[assistantIndex] = {
+                  ...updated[assistantIndex],
+                  content: accumulatedContent,
+                  loadingThoughts: false
+                };
+                return updated;
+              });
+            } else if (type === 'err') {
+              setMessages(prev => {
+                const updated = [...prev];
+                updated[assistantIndex] = { ...updated[assistantIndex], content: `System Error: ${content}`, loadingThoughts: false };
                 return updated;
               });
             }
-          } else if (line.startsWith('ANSWER:')) {
-            const content = line.replace('ANSWER:', '');
-            accumulatedContent += content;
-            setMessages(prev => {
-              const updated = [...prev];
-              updated[assistantIndex] = {
-                ...updated[assistantIndex],
-                content: accumulatedContent,
-                loadingThoughts: false
-              };
-              return updated;
-            });
-          } else if (line.startsWith('ERR:')) {
-            const error = line.replace('ERR:', '').trim();
-            setMessages(prev => {
-              const updated = [...prev];
-              updated[assistantIndex] = { ...updated[assistantIndex], content: `System Error: ${error}`, loadingThoughts: false };
-              return updated;
-            });
+          } catch (e) {
+            console.error('JSON Parse Error in stream:', e, 'Line:', line);
           }
         });
       }
