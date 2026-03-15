@@ -42,14 +42,14 @@ async function searchDocuments(query) {
     // Search in Pinecone
     const searchResults = await index.query({
       vector: queryEmbedding,
-      topK: 4,
+      topK: 10, // Increased for better recall
       includeMetadata: true,
     });
 
     if (!searchResults.matches || searchResults.matches.length === 0) {
       return {
         success: false,
-        message: 'No relevant documents found. Please upload documents first.',
+        message: 'No relevant documents found.',
       };
     }
 
@@ -60,10 +60,12 @@ async function searchDocuments(query) {
       score: match.score,
     }));
 
+    console.log(`Knowledge Search: Found ${results.length} matches. Best score: ${results[0]?.score}`);
+
     return {
       success: true,
       results,
-      context: results.map(r => r.text).join('\n\n'),
+      context: results.map(r => r.text).join('\n\n---\n\n'),
     };
 
   } catch (error) {
@@ -77,24 +79,21 @@ async function searchDocuments(query) {
 // Agentic AI: Decide when to use tools
 async function processWithAgent(userMessage, chatHistory = []) {
   // System prompt for agentic behavior
-  const systemPrompt = `You are an intelligent AI assistant with access to a document search tool.
+  const systemPrompt = `You are Aura, an elite AI research assistant.
+You have access to a secure document database.
 
 AVAILABLE TOOLS:
-1. searchDocuments(query) - Search through uploaded documents in the vector database
+1. searchDocuments(query) - Search through uploaded documents. Use this for specific names (e.g., "Mr. Edison"), concepts, or details from the books.
 
-YOUR PROCESS:
-1. Analyze the user's question
-2. Decide if you need to search documents:
-   - Use searchDocuments if the question is about specific uploaded content
-   - Answer directly if it's general knowledge or conversation
-3. If using searchDocuments, formulate a good search query
-4. Provide a helpful answer based on the context
-
-When you want to use a tool, respond EXACTLY in this format:
+PROTOCOL:
+- If the user asks about specific content, YOU MUST SEARCH FIRST.
+- To use the tool, respond ONLY with:
 TOOL: searchDocuments
-QUERY: <your search query here>
+QUERY: <search query>
 
-Otherwise, just provide your answer directly.`;
+- Once you have the results, provide a professional, natural answer.
+- DO NOT mention the word "TOOL" or "QUERY" in your final response to the user.
+- Cite the source files (e.g., "According to [Filename]...")`;
 
   // Build messages array
   const messages = [
@@ -110,14 +109,14 @@ Otherwise, just provide your answer directly.`;
   const response = await openai.chat.completions.create({
     model: CHAT_MODEL,
     messages: messages,
+    temperature: 0, // Lower temperature for more consistent tool calling
   });
 
-  const agentResponse = response.choices[0].message.content;
+  let agentResponse = response.choices[0].message.content;
 
   // Check if agent wants to use tool
   if (agentResponse.includes('TOOL: searchDocuments')) {
-    // Extract query
-    const queryMatch = agentResponse.match(/QUERY: (.+)/);
+    const queryMatch = agentResponse.match(/QUERY:\s*(.+)/);
     if (queryMatch) {
       const searchQuery = queryMatch[1].trim();
 
@@ -125,16 +124,16 @@ Otherwise, just provide your answer directly.`;
       const searchResult = await searchDocuments(searchQuery);
 
       if (searchResult.success) {
-        // Second call: Answer with context
-        const contextPrompt = `Based on these search results from the documents:
-
+        const contextPrompt = `NEURAL SEARCH RESULTS:
 ${searchResult.context}
 
-Sources: ${searchResult.results.map(r => r.source).join(', ')}
+INSTRUCTIONS:
+- Answer the user's question accurately using ONLY the context above.
+- If the information is not in the context, say you don't know based on the documents.
+- Use a natural, helpful tone. 
+- DO NOT repeat the "TOOL:" or "QUERY:" headers in your answer.
 
-Now answer the user's question: "${userMessage}"
-
-Provide a helpful answer and cite the sources.`;
+User Question: "${userMessage}"`;
 
         const finalResponse = await openai.chat.completions.create({
           model: CHAT_MODEL,
@@ -145,15 +144,20 @@ Provide a helpful answer and cite the sources.`;
           ],
         });
 
+        let finalAnswer = finalResponse.choices[0].message.content;
+
+        // Final cleanup: Ensure no leaked tool calls
+        finalAnswer = finalAnswer.replace(/TOOL: searchDocuments/gi, '').replace(/QUERY: .+/gi, '').trim();
+
         return {
-          answer: finalResponse.choices[0].message.content,
+          answer: finalAnswer,
           usedTool: true,
           toolQuery: searchQuery,
           sources: searchResult.results.map(r => r.source),
         };
       } else {
         return {
-          answer: searchResult.message,
+          answer: "I couldn't find relevant information in the uploaded documents.",
           usedTool: true,
           toolQuery: searchQuery,
           sources: [],
@@ -162,7 +166,7 @@ Provide a helpful answer and cite the sources.`;
     }
   }
 
-  // No tool needed, return direct answer
+  // No tool needed
   return {
     answer: agentResponse,
     usedTool: false,

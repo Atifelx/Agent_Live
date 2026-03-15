@@ -66,8 +66,8 @@ export default async function handler(req, res) {
 
     // Split text into chunks
     const textSplitter = new RecursiveCharacterTextSplitter({
-      chunkSize: 800,   // Smaller chunks = better RAG retrieval accuracy
-      chunkOverlap: 150,
+      chunkSize: 500,   // More granular chunks for better specificity
+      chunkOverlap: 200, // Higher overlap to maintain context across chunks
     });
 
     const chunks = await textSplitter.createDocuments([text]);
