@@ -53,7 +53,7 @@ export default function Home() {
     }
   }, [messages, loading]);
 
-  // Handle file upload
+  // Handle file upload (Async Robust Version)
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -65,71 +65,88 @@ export default function Home() {
     }
 
     setUploading(true);
-    setUploadProgress(10);
-    setUploadStatus('Reading file...');
+    setUploadProgress(5);
+    setUploadStatus('Extracting Master Knowledge...');
 
     try {
+      // Step 1: Extract and Chunk (Server-side helper)
       const reader = new FileReader();
       reader.onload = async (e) => {
-        setUploadProgress(30);
-        setUploadStatus('Processing metadata...');
         const base64 = e.target.result.split(',')[1];
 
-        const response = await fetch('/api/upload', {
+        const parseResponse = await fetch('/api/parse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fileContent: base64,
-            fileName: file.name,
-            fileType,
-          }),
+          body: JSON.stringify({ fileContent: base64, fileType }),
         });
 
-        setUploadProgress(60);
-        setUploadStatus('Neural Chunking...');
+        const parseData = await parseResponse.json();
+        if (!parseData.success) throw new Error(parseData.error);
 
-        const data = await response.json();
+        const chunks = parseData.chunks;
+        const batchSize = 70;
+        const totalBatches = Math.ceil(chunks.length / batchSize);
 
-        if (data.success) {
-          setUploadProgress(90);
-          setUploadStatus('Indexing in Vector DB...');
+        setUploadProgress(10);
+        setUploadStatus(`Indexing ${chunks.length} semantic fragments...`);
 
-          setTimeout(() => {
-            setUploadProgress(100);
-            setUploadStatus('Success!');
+        // Step 2: Sequential Batch Processing (Anti-Timeout & Anti-RateLimit)
+        for (let i = 0; i < chunks.length; i += batchSize) {
+          const batchIndex = Math.floor(i / batchSize);
+          const currentBatch = chunks.slice(i, i + batchSize);
 
-            // Add to tracked documents
-            setUploadedDocs(prev => {
-              const updated = [...new Set([...prev, file.name])];
-              localStorage.setItem('aura_indexed_docs', JSON.stringify(updated));
-              return updated;
-            });
+          setUploadStatus(`Injection Pulse: ${batchIndex + 1} of ${totalBatches}`);
 
-            setTimeout(() => {
-              setUploading(false);
-              setUploadProgress(0);
-              setUploadStatus('');
-            }, 1000);
-          }, 1000);
-        } else {
+          const indexResponse = await fetch('/api/index-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              batchTexts: currentBatch,
+              fileName: file.name,
+              startIndex: i
+            }),
+          });
+
+          const indexData = await indexResponse.json();
+          if (!indexData.success) throw new Error(indexData.error);
+
+          // Update Progress
+          const progress = 10 + Math.floor(((batchIndex + 1) / totalBatches) * 90);
+          setUploadProgress(progress);
+
+          // Rate-limit safety pause (Async Throttling)
+          if (i + batchSize < chunks.length) {
+            await new Promise(r => setTimeout(r, 1000));
+          }
+        }
+
+        setUploadStatus('Neural Sync Complete.');
+        setUploadProgress(100);
+
+        // Update UI
+        setUploadedDocs(prev => {
+          const updated = [...new Set([...prev, file.name])];
+          localStorage.setItem('aura_indexed_docs', JSON.stringify(updated));
+          return updated;
+        });
+
+        setTimeout(() => {
           setUploading(false);
           setUploadProgress(0);
           setUploadStatus('');
-          alert(`Upload failed: ${data.error}`);
-        }
-
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
+        }, 1500);
       };
 
       reader.readAsDataURL(file);
     } catch (error) {
-      alert(`Error: ${error.message}`);
+      console.error('Upload Error:', error);
+      alert(`Critical Error during Neural Sync: ${error.message}`);
       setUploading(false);
       setUploadProgress(0);
       setUploadStatus('');
     }
+
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // Handle delete data
