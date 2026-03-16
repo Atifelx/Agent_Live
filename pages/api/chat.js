@@ -56,10 +56,21 @@ async function searchDocuments(query) {
       score: match.score,
     }));
 
+    // Deduplicate results based on text content to avoid LLM repetition
+    const uniqueResults = [];
+    const seenTexts = new Set();
+    for (const res of results) {
+      const normalizedText = res.text.substring(0, 100).toLowerCase().replace(/\s/g, '');
+      if (!seenTexts.has(normalizedText)) {
+        uniqueResults.push(res);
+        seenTexts.add(normalizedText);
+      }
+    }
+
     return {
       success: true,
-      results,
-      context: results.map(r => `[Source: ${r.source}] ${r.text}`).join('\n\n---\n\n'),
+      results: uniqueResults,
+      context: uniqueResults.map(r => `[Source: ${r.source}] ${r.text}`).join('\n\n---\n\n'),
     };
   } catch (error) {
     console.error('Doc Search Error:', error);
@@ -124,12 +135,14 @@ THINKING PROTOCOL:
 
 YOUR VOICE:
 - **Natural & Human**: Professional yet conversational.
-- **Double-Newline Formatting**: YOU MUST use double-newlines between ALL paragraphs, headers, and list items to ensure perfect markdown readability.
+- **Double-Newline Formatting**: USE double-newlines between paragraphs for readability, but DO NOT repeat the same information across paragraphs.
+- **Strict Synthesis**: Provide a SINGLE, comprehensive explanation. If you find duplicate information in your sources, merge them into one clear thought.
+- **Conciseness**: Follow the user's length constraints (e.g., "1 line") strictly.
 - **No Technical Leaks**: NEVER show "TOOL:" or "QUERY:" in your final answer.
 
 RESPONSE FORMAT:
 - Tool Call: TOOL: <toolName> \n QUERY: <searchQuery>
-- Final Answer: Your natural synthesis with double-newline spacing.`;
+- Final Answer: Your natural, non-repetitive synthesis.`;
 
   let currentMessages = [
     { role: 'system', content: systemPrompt },
@@ -148,13 +161,23 @@ RESPONSE FORMAT:
     turns++;
 
     // Broadcast status to client with slight delay for visibility
-    await sleep(800);
-    onStream('thought', turns === 1 ? 'Analyzing intelligence requirements...' : 'Synthesizing knowledge layers...');
+    const thoughtVariations = [
+      "Analyzing intelligence requirements...",
+      "Sifting through conceptual frameworks...",
+      "Expanding reasoning parameters...",
+      "Synthesizing knowledge layers...",
+      "Architecting neural response..."
+    ];
+
+    await sleep(400);
+    onStream('thought', thoughtVariations[Math.min(turns - 1, thoughtVariations.length - 1)]);
 
     const response = await openai.chat.completions.create({
       model: CHAT_MODEL,
       messages: currentMessages,
       temperature: 0.1,
+      presence_penalty: 0.2, // Discourage getting stuck on one topic
+      frequency_penalty: 0.3, // Discourage word repetition
     });
 
     const agentResponse = response.choices[0].message.content;
@@ -216,8 +239,13 @@ RESPONSE FORMAT:
 
       const finalStream = await openai.chat.completions.create({
         model: CHAT_MODEL,
-        messages: currentMessages,
-        temperature: 0.7, // Higher temp for natural voice
+        messages: [
+          ...currentMessages,
+          { role: 'system', content: "CRITICAL: Provide your final answer now. Do not repeat facts you have already stated. Be concise and professional." }
+        ],
+        temperature: 0.5, // Reduced from 0.7 for more stability
+        presence_penalty: 0.4,
+        frequency_penalty: 0.5,
         stream: true,
       });
 

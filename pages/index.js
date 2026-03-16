@@ -20,7 +20,9 @@ import {
   BookOpen,
   Sparkles,
   Database,
-  History
+  History,
+  MessageSquare,
+  Plus
 } from "lucide-react";
 import dynamic from 'next/dynamic';
 const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false });
@@ -175,7 +177,10 @@ export default function Home() {
     setLoading(false);
   };
 
+  const [sessionName, setSessionName] = useState('New Intelligence Session');
   const [mounted, setMounted] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+
   useEffect(() => {
     setMounted(true);
     const savedDocs = localStorage.getItem('aura_indexed_docs');
@@ -191,14 +196,34 @@ export default function Home() {
     } else {
       setMessages([{ role: 'assistant', content: "Hello! I am Clever Chat. Upload a document to start our deep-dive, or ask me anything from the live web." }]);
     }
+
+    const savedSessionName = localStorage.getItem('clever_chat_session_name');
+    if (savedSessionName) {
+      setSessionName(savedSessionName);
+    }
   }, []);
 
   // Save history on change
   useEffect(() => {
     if (mounted && messages.length > 0) {
       localStorage.setItem('clever_chat_history', JSON.stringify(messages));
+      localStorage.setItem('clever_chat_session_name', sessionName);
     }
-  }, [messages, mounted]);
+  }, [messages, sessionName, mounted]);
+
+  // Handle New Chat (Trigger Modal)
+  const handleNewChat = () => {
+    setShowResetModal(true);
+  };
+
+  // Execute New Chat after confirmation
+  const executeNewChat = () => {
+    setMessages([{ role: 'assistant', content: "New session started. How can I assist you?" }]);
+    setSessionName('New Intelligence Session');
+    localStorage.removeItem('clever_chat_history');
+    localStorage.removeItem('clever_chat_session_name');
+    setShowResetModal(false);
+  };
 
   // Handle chat with real-time streaming thoughts
   const handleSend = async () => {
@@ -207,6 +232,19 @@ export default function Home() {
     const userMessage = input.trim();
     setInput('');
     setLoading(true);
+
+    // Auto-generate session name if it's default
+    if (sessionName === 'New Intelligence Session' || messages.length <= 1) {
+      // Smarter naming: Get first few words or contextually clean up
+      const cleanName = userMessage
+        .replace(/[^\w\s]/gi, '')
+        .split(' ')
+        .slice(0, 5)
+        .join(' ');
+
+      const suggestedName = cleanName.length > 30 ? cleanName.substring(0, 30) + "..." : cleanName || "New Conversation";
+      setSessionName(suggestedName);
+    }
 
     // Atomic update: User msg + Assistant placeholder
     setMessages(prev => [
@@ -238,6 +276,37 @@ export default function Home() {
       let accumulatedSources = [];
       let streamBuffer = '';
 
+      // Automated Thinking Pacer: Keeps the UI alive during long LLM waits
+      const genericThoughts = [
+        "Analyzing latent patterns...",
+        "Cross-referencing verified knowledge...",
+        "Synthesizing high-density context...",
+        "Optimizing reasoning path...",
+        "Finalizing intelligence output..."
+      ];
+      let thoughtIdx = 0;
+
+      const thinkingTimer = setInterval(() => {
+        if (accumulatedContent.length > 0) {
+          clearInterval(thinkingTimer);
+          return;
+        }
+
+        const nextThought = genericThoughts[thoughtIdx];
+        if (nextThought && !accumulatedThoughts.includes(nextThought)) {
+          accumulatedThoughts.push(nextThought);
+          setMessages(prev => {
+            const updated = [...prev];
+            const idx = updated.findLastIndex(m => m.role === 'assistant');
+            if (idx !== -1) {
+              updated[idx] = { ...updated[idx], thinkingSteps: [...accumulatedThoughts] };
+            }
+            return updated;
+          });
+          thoughtIdx++;
+        }
+      }, 3000);
+
       const processLine = (line) => {
         if (!line.trim()) return;
         try {
@@ -258,6 +327,8 @@ export default function Home() {
               accumulatedSources = content.split(',').map(s => s.trim());
               updated[idx] = { ...updated[idx], sources: accumulatedSources, usedTool: true };
             } else if (type === 'answer') {
+              // Once actual answer starts, clear pacer
+              clearInterval(thinkingTimer);
               accumulatedContent += content;
               updated[idx] = {
                 ...updated[idx],
@@ -265,6 +336,7 @@ export default function Home() {
                 loadingThoughts: false
               };
             } else if (type === 'err') {
+              clearInterval(thinkingTimer);
               updated[idx] = { ...updated[idx], content: `System Error: ${content}`, loadingThoughts: false };
             }
             return updated;
@@ -291,6 +363,8 @@ export default function Home() {
       if (streamBuffer.trim()) {
         processLine(streamBuffer);
       }
+
+      clearInterval(thinkingTimer);
 
     } catch (error) {
       console.error('Streaming Error:', error);
@@ -328,7 +402,7 @@ export default function Home() {
               </span>
             </div>
             <div className="hidden md:flex ml-6 pl-6 border-l border-zinc-800">
-              <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-600">
+              <span className="text-[13px] uppercase tracking-[0.2em] font-bold text-white">
                 Agentic AI | Langchain | RAG | Live Search Agents
               </span>
             </div>
@@ -431,9 +505,51 @@ export default function Home() {
                   )}
                 </div>
               </ScrollArea>
+
+              {/* Session Management UI */}
+              <div className="mt-6 space-y-4 px-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] flex items-center">
+                    <MessageSquare className="w-3.5 h-3.5 mr-2 opacity-50" />
+                    Neural Session
+                  </h4>
+                  <div className="flex items-center space-x-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-zinc-500 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all"
+                      onClick={handleNewChat}
+                      title="Clear Session"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-full transition-all"
+                      onClick={() => {
+                        setMessages([{ role: 'assistant', content: "New session started. How can I assist you?" }]);
+                        setSessionName('New Intelligence Session');
+                      }}
+                      title="New Chat"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-zinc-900/40 border border-zinc-800/50 rounded-xl backdrop-blur-sm group hover:border-zinc-700/80 transition-all cursor-default">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
+                    <span className="text-sm font-bold text-zinc-100 truncate tracking-tight group-hover:text-white transition-colors">
+                      {sessionName}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-5 px-3 pt-4 border-t border-zinc-800/30">
+            <div className="space-y-5 px-3 pt-6 border-t border-zinc-800/30">
               <h4 className="text-xs font-bold text-zinc-600 uppercase tracking-[0.2em]">Infrastructure</h4>
               {[
                 { icon: Search, label: "Vector Retrieval", desc: "Pinecone Inference (RAG)" },
@@ -460,7 +576,7 @@ export default function Home() {
             <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-900/5 rounded-full blur-[140px] -z-10 pointer-events-none" />
 
             <ScrollArea className="flex-1 p-8" ref={scrollRef}>
-              <div className="max-w-4xl mx-auto space-y-10 pb-6">
+              <div className="max-w-6xl mx-auto space-y-10 pb-6">
                 {messages.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center mt-40 space-y-6 opacity-30">
                     <div className="p-5 bg-zinc-900/40 rounded-3xl border border-zinc-800 shadow-inner group-hover:scale-110 transition-transform duration-500">
@@ -474,7 +590,7 @@ export default function Home() {
                 ) : (
                   messages.map((msg, idx) => (
                     <div key={idx} className={`flex items-start ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out`}>
-                      <div className={`max-w-[85%] space-y-4`}>
+                      <div className={`max-w-[98%] w-full space-y-4`}>
 
                         {/* Thinking Artifact (Real-time Reasoning) */}
                         {msg.role === 'assistant' && msg.thinkingSteps && msg.thinkingSteps.length > 0 && (
@@ -503,9 +619,9 @@ export default function Home() {
                         )}
 
                         {(msg.content || msg.role === 'user') && (
-                          <div className={`px-7 py-5 rounded-[2rem] text-base leading-[1.6] shadow-2xl ${msg.role === 'user'
-                            ? 'bg-zinc-100 text-zinc-900 font-semibold ml-16 shadow-white/5'
-                            : 'bg-zinc-900/80 border border-zinc-800 text-zinc-100 mr-16 border-white/5'
+                          <div className={`px-8 py-4 rounded-[2rem] shadow-2xl ${msg.role === 'user'
+                            ? 'bg-zinc-100 text-zinc-900 font-medium shadow-white/5'
+                            : 'bg-zinc-900/80 border border-zinc-800 text-zinc-100 border-white/5'
                             }`}>
                             <div className="prose-aura">
                               <ReactMarkdown>
@@ -543,7 +659,7 @@ export default function Home() {
 
             {/* Input Engine */}
             <div className="p-8 bg-[#0a0a0a]/80 backdrop-blur-2xl border-t border-zinc-800/50">
-              <div className="max-w-4xl mx-auto flex items-center space-x-4">
+              <div className="max-w-6xl mx-auto flex items-center space-x-4">
                 <div className="relative flex-1 group">
                   <Input
                     value={input}
@@ -570,6 +686,40 @@ export default function Home() {
 
         </div>
       </main>
+
+      {/* Session Reset Confirmation Modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setShowResetModal(false)} />
+          <Card className="relative w-full max-w-md bg-zinc-900 border-zinc-800 shadow-2xl animate-in zoom-in-95 duration-300 overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 to-transparent" />
+            <CardHeader className="pt-8 px-6">
+              <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-4">
+                <Trash2 className="w-6 h-6 text-red-500" />
+              </div>
+              <CardTitle className="text-xl font-bold text-white">Clear Neural Session?</CardTitle>
+              <CardDescription className="text-zinc-400 mt-2 text-sm leading-relaxed">
+                This will purge all intelligence history and reset the current thinking path. This action is permanent.
+              </CardDescription>
+            </CardHeader>
+            <CardFooter className="flex justify-end space-x-3 pb-8 px-6 pt-4">
+              <Button
+                variant="ghost"
+                className="text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800"
+                onClick={() => setShowResetModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-red-600 hover:bg-red-700 text-white font-bold px-6 shadow-lg shadow-red-900/20"
+                onClick={executeNewChat}
+              >
+                Delete Session
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
