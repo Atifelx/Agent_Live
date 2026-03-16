@@ -307,15 +307,12 @@ const openai = new OpenAI({
   },
 });
 
-// Model Configuration with Fallbacks
-// Primary: Llama 3.2 3B (fast and free)
-// Fallback 1: Qwen 2.5 7B (free)
-// Fallback 2: NVIDIA Nemotron 3 Super (free)
 const MODEL_CONFIG = {
-  primary: 'meta-llama/llama-3.2-3b-instruct:free',
-  fallback1: 'qwen/qwen-2.5-7b-instruct:free',
-  fallback2: 'nvidia/nemotron-3-super-120b-a12b:free',
+  primary: 'nvidia/nemotron-3-super-120b-a12b:free',      // 🥇 Best RAG quality (120B)
+  fallback1: 'qwen/qwen-2.5-7b-instruct:free',            // 🥈 Balanced (7B)
+  fallback2: 'meta-llama/llama-3.2-3b-instruct:free',     // 🥉 Fast backup (3B)
 };
+
 
 // Use primary model for both chat and routing by default
 let CHAT_MODEL = MODEL_CONFIG.primary;
