@@ -263,10 +263,17 @@ RESPONSE FORMAT:
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // Set headers for streaming
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  // Validate required env vars
+  if (!process.env.OPENROUTER_API_KEY) {
+    return res.status(500).json({ error: 'OPENROUTER_API_KEY is not configured on this server.' });
+  }
+
+  // Set headers for streaming — compatible with Vercel serverless
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Tells Vercel/nginx NOT to buffer the stream
+  res.setHeader('Transfer-Encoding', 'chunked');
 
   try {
     const { message, chatHistory, activeDocs } = req.body;
@@ -286,6 +293,16 @@ export default async function handler(req, res) {
     res.end();
   }
 }
+
+// Per-route Next.js config: raise body limit and allow large streaming responses
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+    responseLimit: false,
+  },
+};
 
 // Helper: Delay for smoother AI "Thinking" visibility
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
