@@ -1,0 +1,18 @@
+{
+    "version": 2,
+    "functions": {
+        "pages/api/chat.js": {
+            "maxDuration": 60
+        },
+        "pages/api/index-batch.js": {
+            "maxDuration": 60
+        },
+        "pages/api/parse.js": {
+            "maxDuration": 60,
+            "memory": 1024
+        },
+        "pages/api/list-docs.js": {
+            "maxDuration": 30
+        }
+    }
+}
