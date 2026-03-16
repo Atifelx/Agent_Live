@@ -736,12 +736,14 @@ async function callGeminiAPI(messages, options = {}) {
 
     const data = JSON.parse(responseText);
 
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    console.log('✅ Gemini responded successfully');
+
     // Handle streaming vs non-streaming
     if (options.stream) {
-      // For streaming, return a mock streaming response
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      // For streaming, return async iterator
       return {
-        async *[Symbol.asyncIterator]() {
+        [Symbol.asyncIterator]: async function* () {
           // Split into chunks for smooth streaming effect
           const words = text.split(' ');
           for (let i = 0; i < words.length; i++) {
@@ -757,8 +759,6 @@ async function callGeminiAPI(messages, options = {}) {
       };
     } else {
       // Non-streaming response
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      console.log('✅ Gemini responded successfully');
       return {
         choices: [{
           message: { content: text }
