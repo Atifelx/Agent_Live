@@ -113,76 +113,64 @@ async function searchWeb(query) {
   }
 }
 
+// Two-model strategy: fast router + powerful synthesizer
+// ROUTING_MODEL: Fast, cheap — decides if tool needed (must respond in <3s)
+// CHAT_MODEL: Powerful — only used for the final answer stream
+const ROUTING_MODEL = 'meta-llama/llama-3.1-8b-instruct:free';
+
 // Agentic AI: Multi-Tool Facilitator (Recursive Reasoning Loop)
 async function processWithAgent(userMessage, chatHistory = [], activeDocs = [], onStream = () => { }) {
   const libraryContext = activeDocs.length > 0
     ? `Currently active in your SECURE PRIVATE LIBRARY: [${activeDocs.join(', ')}].`
     : "Your private library is currently empty. Direct the user to upload documents if they ask about private files.";
 
-  const systemPrompt = `You are Clever Chat, a sophisticated and empathetic AI research partner. Your goal is to help the user master complex information through multi-step reasoning.
+  const systemPrompt = `You are Clever Chat, a sophisticated AI research partner.
 
 ${libraryContext}
 
-You have access to TWO primary intelligence streams:
-1. searchDocuments(query) - Search your SECURE PRIVATE LIBRARY. Use this for facts in specific uploaded files.
-2. searchWeb(query) - Access the LIVE WORLD. Use this for current events and real-world examples.
+You have access to TWO tools:
+1. searchDocuments(query) - Search the PRIVATE LIBRARY for facts in uploaded files.
+2. searchWeb(query) - Access the LIVE WEB for current events and real-world examples.
 
-THINKING PROTOCOL:
-1. **Analyze**: Break down the user's query. If the user asks something unrelated to previous context, ACKNOWLEDGE the shift (e.g., "I see we're moving from 48 Laws to travel planning now—let's look into that!").
-2. **Execute**: If you need information, CALL A TOOL.
-3. **Loop**: Review the tool results. Does this answer the whole question?
-4. **Finalize**: Synthesize a final human response.
+RULES:
+- If the user asks about uploaded documents, use searchDocuments.
+- If the user asks about general knowledge or current events, use searchWeb.
+- For simple greetings ("hi", "hello", "how are you"), answer DIRECTLY without using any tool.
+- To use a tool respond ONLY with: TOOL: <toolName>\nQUERY: <searchQuery>
+- After getting tool results, synthesize a helpful, non-repetitive answer.
+- NEVER repeat the same fact twice.
+- Follow the user's length constraints strictly.`;
 
-YOUR VOICE:
-- **Natural & Human**: Professional yet conversational.
-- **Double-Newline Formatting**: USE double-newlines between paragraphs for readability, but DO NOT repeat the same information across paragraphs.
-- **Strict Synthesis**: Provide a SINGLE, comprehensive explanation. If you find duplicate information in your sources, merge them into one clear thought.
-- **Conciseness**: Follow the user's length constraints (e.g., "1 line") strictly.
-- **No Technical Leaks**: NEVER show "TOOL:" or "QUERY:" in your final answer.
-
-RESPONSE FORMAT:
-- Tool Call: TOOL: <toolName> \n QUERY: <searchQuery>
-- Final Answer: Your natural, non-repetitive synthesis.`;
-
-  let currentMessages = [
+  const routingMessages = [
     { role: 'system', content: systemPrompt },
-    ...chatHistory.map(msg => ({
+    ...chatHistory.slice(-6).map(msg => ({ // Only last 6 messages for speed
       role: msg.role === 'user' ? 'user' : 'assistant',
       content: msg.content
     })),
     { role: 'user', content: userMessage }
   ];
 
+  let currentMessages = [...routingMessages];
   let turns = 0;
-  const maxTurns = 4;
+  const maxTurns = 3; // Reduced from 4 to stay within timeout
   let accumulatedSources = [];
+
+  onStream('thought', 'Analyzing your request...');
 
   while (turns < maxTurns) {
     turns++;
 
-    // Broadcast status to client with slight delay for visibility
-    const thoughtVariations = [
-      "Analyzing intelligence requirements...",
-      "Sifting through conceptual frameworks...",
-      "Expanding reasoning parameters...",
-      "Synthesizing knowledge layers...",
-      "Architecting neural response..."
-    ];
-
-    await sleep(400);
-    onStream('thought', thoughtVariations[Math.min(turns - 1, thoughtVariations.length - 1)]);
-
+    // Use fast routing model for tool decision — critical for staying under Vercel timeout
     const response = await openai.chat.completions.create({
-      model: CHAT_MODEL,
+      model: ROUTING_MODEL,
       messages: currentMessages,
       temperature: 0.1,
-      presence_penalty: 0.2, // Discourage getting stuck on one topic
-      frequency_penalty: 0.3, // Discourage word repetition
+      max_tokens: 200, // Only need a short tool-call or "answer directly"
     });
 
     const agentResponse = response.choices[0].message.content;
 
-    // Enhanced Tool Detection
+    // Tool Detection
     let toolName = null;
     let searchQuery = null;
 
@@ -192,23 +180,10 @@ RESPONSE FORMAT:
     if (toolMatch && queryMatch) {
       toolName = toolMatch[1].trim();
       searchQuery = queryMatch[1].trim();
-    } else {
-      try {
-        const jsonMatch = agentResponse.match(/\{[\s\S]*"tool"[\s\S]*"query"[\s\S]*\}/);
-        if (jsonMatch) {
-          const potentialJson = JSON.parse(jsonMatch[0]);
-          if (potentialJson.tool && potentialJson.query) {
-            toolName = potentialJson.tool;
-            searchQuery = potentialJson.query;
-          }
-        }
-      } catch (e) { }
     }
 
     if (toolName && searchQuery) {
-      // Step-by-step thinking visualization
-      const actionLabel = toolName === 'searchDocuments' ? 'Sifting through private library' : 'Scanning live web signals';
-      await sleep(1000); // Give user time to read the intent
+      const actionLabel = toolName === 'searchDocuments' ? 'Sifting through private library' : 'Scanning live web';
       onStream('thought', `${actionLabel}: "${searchQuery}"`);
 
       let toolResult = null;
@@ -222,28 +197,28 @@ RESPONSE FORMAT:
         currentMessages.push({ role: 'assistant', content: agentResponse });
         currentMessages.push({
           role: 'user',
-          content: `OBSERVATION from ${toolName}:\n${toolResult.context}\n\nDoes this complete the user's request? If you need another step (e.g. web search for examples), perform it now. Otherwise, give the final answer.`
+          content: `TOOL RESULTS:\n${toolResult.context}\n\nNow provide the final answer to the user. Be concise and non-repetitive.`
         });
 
         if (toolResult.results) accumulatedSources.push(...toolResult.results.map(r => r.source));
         if (toolResult.sources) accumulatedSources.push(...toolResult.sources);
       } else {
+        // Tool failed, answer from knowledge
         currentMessages.push({ role: 'assistant', content: agentResponse });
-        currentMessages.push({ role: 'user', content: `Tool Error: ${toolResult?.message || 'Unknown error'}.` });
+        currentMessages.push({ role: 'user', content: `Tool unavailable. Answer from your own knowledge.` });
       }
     } else {
-      // No tool call -> Streaming Final Answer Phase
-      await sleep(800);
-      onStream('thought', 'Neural synthesis complete. Rendering response.');
+      // No tool call → Stream final answer with the powerful model
+      onStream('thought', 'Synthesizing response...');
       onStream('sources', [...new Set(accumulatedSources)].join(','));
 
       const finalStream = await openai.chat.completions.create({
         model: CHAT_MODEL,
         messages: [
           ...currentMessages,
-          { role: 'system', content: "CRITICAL: Provide your final answer now. Do not repeat facts you have already stated. Be concise and professional." }
+          { role: 'system', content: "Provide your final answer. Be concise, accurate, and non-repetitive." }
         ],
-        temperature: 0.5, // Reduced from 0.7 for more stability
+        temperature: 0.5,
         presence_penalty: 0.4,
         frequency_penalty: 0.5,
         stream: true,
