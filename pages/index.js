@@ -36,15 +36,34 @@ export default function Home() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploadedDocs, setUploadedDocs] = useState([]);
+  const [isFetchingDocs, setIsFetchingDocs] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
 
-  // Load state from localStorage on mount
+  // Fetch existing indexed docs from Pinecone on mount
   useEffect(() => {
-    const savedDocs = localStorage.getItem('aura_indexed_docs');
-    if (savedDocs) {
-      setUploadedDocs(JSON.parse(savedDocs));
-    }
+    const fetchIndexedDocs = async () => {
+      try {
+        const res = await fetch('/api/list-docs');
+        const data = await res.json();
+        if (data.success && data.sources.length > 0) {
+          setUploadedDocs(data.sources);
+          localStorage.setItem('aura_indexed_docs', JSON.stringify(data.sources));
+        } else {
+          // Fallback to localStorage if Pinecone returns empty
+          const savedDocs = localStorage.getItem('aura_indexed_docs');
+          if (savedDocs) setUploadedDocs(JSON.parse(savedDocs));
+        }
+      } catch (e) {
+        // Fallback to localStorage on network error
+        const savedDocs = localStorage.getItem('aura_indexed_docs');
+        if (savedDocs) setUploadedDocs(JSON.parse(savedDocs));
+      } finally {
+        setIsFetchingDocs(false);
+      }
+    };
+    fetchIndexedDocs();
   }, []);
 
   // Auto-scroll to bottom of chat
@@ -383,49 +402,77 @@ export default function Home() {
   if (!mounted) return null;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 selection:bg-zinc-700">
+    <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 selection:bg-zinc-700 overflow-x-hidden">
       <Head>
         <title>Clever Chat | Agentic AI</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
 
       {/* Navigation */}
       <nav className="border-b border-zinc-800/50 bg-[#0a0a0a]/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-[1600px] mx-auto px-8 py-5 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="w-10 h-10 bg-zinc-100 rounded-xl flex items-center justify-center shadow-lg shadow-white/5">
-              <BrainCircuit className="w-6 h-6 text-zinc-900" />
+        <div className="w-full max-w-[1600px] mx-auto px-4 md:px-8 py-4 md:py-5 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            {/* Mobile sidebar toggle */}
+            <button
+              className="lg:hidden p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-all"
+              onClick={() => setSidebarOpen(o => !o)}
+              aria-label="Toggle sidebar"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+              </svg>
+            </button>
+            <div className="w-9 h-9 bg-zinc-100 rounded-xl flex items-center justify-center shadow-lg shadow-white/5">
+              <BrainCircuit className="w-5 h-5 text-zinc-900" />
             </div>
             <div className="flex flex-col">
-              <span className="text-2xl font-bold tracking-tight text-white">Clever Chat</span>
-              <span className="text-xs text-zinc-500 font-medium tracking-wide">
+              <span className="text-xl md:text-2xl font-bold tracking-tight text-white">Clever Chat</span>
+              <span className="text-xs text-zinc-500 font-medium tracking-wide hidden sm:block">
                 Build by <a href="https://www.linkedin.com/in/atif-shaikh/" target="_blank" rel="noopener noreferrer" className="text-emerald-500 hover:text-emerald-400 hover:underline transition-colors">Atif Shaikh</a>
               </span>
             </div>
-            <div className="hidden md:flex ml-6 pl-6 border-l border-zinc-800">
-              <span className="text-[13px] uppercase tracking-[0.2em] font-bold text-white">
-                Agentic AI | Langchain | RAG | Live Search Agents
+            <div className="hidden md:flex ml-4 pl-4 border-l border-zinc-800">
+              <span className="text-[11px] uppercase tracking-[0.15em] font-bold text-white">
+                Agentic AI | RAG | Live Search
               </span>
             </div>
           </div>
-          <div className="flex items-center space-x-6">
-            <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-zinc-100 text-sm" onClick={handleDeleteData}>
-              <Trash2 className="w-5 h-5 mr-3" />
-              Reset DB
+          <div className="flex items-center space-x-2 md:space-x-4">
+            <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-zinc-100 text-xs md:text-sm px-2 md:px-3" onClick={handleDeleteData}>
+              <Trash2 className="w-4 h-4 md:mr-2" />
+              <span className="hidden md:inline">Reset DB</span>
             </Button>
-            <Separator orientation="vertical" className="h-8 bg-zinc-800" />
-            <div className="flex items-center space-x-3">
-              <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_12px_rgba(16,185,129,0.5)]" />
-              <span className="text-sm text-zinc-500 font-medium uppercase tracking-wider">System Live</span>
+            <Separator orientation="vertical" className="h-8 bg-zinc-800 hidden md:block" />
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_12px_rgba(16,185,129,0.5)]" />
+              <span className="text-xs text-zinc-500 font-medium uppercase tracking-wider hidden sm:block">Live</span>
             </div>
           </div>
         </div>
       </nav>
 
-      <main className="max-w-[1600px] mx-auto px-8 py-10 h-[calc(100vh-81px)]">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-10 h-full">
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden" onClick={() => setSidebarOpen(false)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+        </div>
+      )}
+
+      <main className="w-full max-w-[1600px] mx-auto px-4 md:px-8 py-4 md:py-8 h-[calc(100vh-65px)] md:h-[calc(100vh-81px)]">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-8 h-full">
 
           {/* Sidebar */}
-          <div className="lg:col-span-1 space-y-8 flex flex-col">
+          <div className={`
+            fixed lg:static inset-y-0 left-0 z-50 lg:z-auto
+            w-72 lg:w-auto lg:col-span-1
+            transform transition-transform duration-300 ease-in-out
+            ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+            bg-[#0a0a0a] lg:bg-transparent
+            overflow-y-auto lg:overflow-visible
+            pt-16 lg:pt-0
+            px-4 lg:px-0
+            space-y-6 md:space-y-8 flex flex-col
+          `}>
             <Card className="bg-zinc-900/40 border-zinc-800/50 backdrop-blur-md p-2">
               <CardHeader className="pb-5">
                 <CardTitle className="text-sm font-semibold text-zinc-500 uppercase tracking-widest flex items-center">
@@ -480,12 +527,20 @@ export default function Home() {
                   <History className="w-4 h-4 mr-2 text-zinc-500" />
                   Active Knowledge
                 </h4>
-                <Badge className="bg-zinc-800/80 text-zinc-300 border-none font-bold text-[10px]">{uploadedDocs.length}</Badge>
+                <div className="flex items-center gap-2">
+                  {isFetchingDocs && <Loader2 className="w-3 h-3 animate-spin text-zinc-500" />}
+                  <Badge className="bg-zinc-800/80 text-zinc-300 border-none font-bold text-[10px]">{uploadedDocs.length}</Badge>
+                </div>
               </div>
 
               <ScrollArea className="flex-1 bg-zinc-900/10 rounded-2xl border border-zinc-800/30">
                 <div className="p-4 space-y-3">
-                  {uploadedDocs.length === 0 ? (
+                  {isFetchingDocs ? (
+                    <div className="py-10 text-center opacity-60">
+                      <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin text-zinc-500" />
+                      <p className="text-xs font-medium tracking-wide text-zinc-500">Scanning Knowledge Base...</p>
+                    </div>
+                  ) : uploadedDocs.length === 0 ? (
                     <div className="py-10 text-center opacity-30">
                       <FileText className="w-8 h-8 mx-auto mb-3 opacity-20" />
                       <p className="text-xs font-medium tracking-wide">No Documents Indexed</p>
@@ -575,16 +630,16 @@ export default function Home() {
             <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-zinc-800/10 rounded-full blur-[160px] -z-10 pointer-events-none" />
             <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-900/5 rounded-full blur-[140px] -z-10 pointer-events-none" />
 
-            <ScrollArea className="flex-1 p-8" ref={scrollRef}>
-              <div className="max-w-6xl mx-auto space-y-10 pb-6">
+            <ScrollArea className="flex-1 p-4 md:p-8" ref={scrollRef}>
+              <div className="max-w-6xl mx-auto space-y-8 md:space-y-10 pb-6">
                 {messages.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center mt-40 space-y-6 opacity-30">
-                    <div className="p-5 bg-zinc-900/40 rounded-3xl border border-zinc-800 shadow-inner group-hover:scale-110 transition-transform duration-500">
-                      <BrainCircuit className="w-16 h-16 text-zinc-100" />
+                  <div className="h-full flex flex-col items-center justify-center mt-20 md:mt-40 space-y-6 opacity-30">
+                    <div className="p-5 bg-zinc-900/40 rounded-3xl border border-zinc-800 shadow-inner">
+                      <BrainCircuit className="w-12 h-12 md:w-16 md:h-16 text-zinc-100" />
                     </div>
                     <div className="text-center">
-                      <h3 className="text-xl font-bold text-zinc-100 tracking-tight">Intelligence Ready</h3>
-                      <p className="text-base text-zinc-500 font-medium mt-2">Awaiting document context or user inquiry.</p>
+                      <h3 className="text-lg md:text-xl font-bold text-zinc-100 tracking-tight">Intelligence Ready</h3>
+                      <p className="text-sm md:text-base text-zinc-500 font-medium mt-2">Awaiting document context or user inquiry.</p>
                     </div>
                   </div>
                 ) : (
