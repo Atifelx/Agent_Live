@@ -643,6 +643,7 @@
 
 //=====================================================================
 
+
 // pages/api/chat.js
 // Agentic AI endpoint with dual-tool orchestration (Docs + Web)
 // Multi-layer fallback: OpenRouter (3 models) → Google Gemini (ultimate backup)
@@ -672,8 +673,8 @@ const MODEL_CONFIG = {
   },
   gemini: {
     apiKey: process.env.GOOGLE_API_KEY,                     // 🛡️ Ultimate fallback
-    model: 'gemini-1.5-flash-latest',
-    endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent',
+    model: 'gemini-1.5-flash',
+    endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
   }
 };
 
@@ -692,20 +693,30 @@ async function callGeminiAPI(messages, options = {}) {
       throw new Error('GOOGLE_API_KEY not configured');
     }
 
-    // Convert OpenAI message format to Gemini format
-    const geminiMessages = messages
-      .filter(m => m.role !== 'system')
-      .map(m => ({
-        parts: [{ text: m.content }]
-      }));
+    // Combine all messages into a single prompt for Gemini
+    let combinedPrompt = '';
 
-    // Add system message as first user message if exists
-    const systemMsg = messages.find(m => m.role === 'system');
-    if (systemMsg) {
-      geminiMessages.unshift({
-        parts: [{ text: systemMsg.content }]
-      });
+    for (const msg of messages) {
+      if (msg.role === 'system') {
+        combinedPrompt += `System Instructions: ${msg.content}\n\n`;
+      } else if (msg.role === 'user') {
+        combinedPrompt += `User: ${msg.content}\n\n`;
+      } else if (msg.role === 'assistant') {
+        combinedPrompt += `Assistant: ${msg.content}\n\n`;
+      }
     }
+
+    const requestBody = {
+      contents: [{
+        parts: [{ text: combinedPrompt }]
+      }],
+      generationConfig: {
+        temperature: options.temperature || 0.5,
+        maxOutputTokens: options.max_tokens || 1000,
+      }
+    };
+
+    console.log('📤 Sending request to Gemini...');
 
     const response = await fetch(MODEL_CONFIG.gemini.endpoint, {
       method: 'POST',
@@ -713,20 +724,18 @@ async function callGeminiAPI(messages, options = {}) {
         'Content-Type': 'application/json',
         'x-goog-api-key': MODEL_CONFIG.gemini.apiKey,
       },
-      body: JSON.stringify({
-        contents: geminiMessages,
-        generationConfig: {
-          temperature: options.temperature || 0.5,
-          maxOutputTokens: options.max_tokens || 1000,
-        }
-      }),
+      body: JSON.stringify(requestBody),
     });
 
+    const responseText = await response.text();
+    console.log('📥 Gemini response status:', response.status);
+
     if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.statusText}`);
+      console.error('❌ Gemini API response:', responseText);
+      throw new Error(`Gemini API error: ${response.status} - ${responseText}`);
     }
 
-    const data = await response.json();
+    const data = JSON.parse(responseText);
 
     // Handle streaming vs non-streaming
     if (options.stream) {
@@ -750,6 +759,7 @@ async function callGeminiAPI(messages, options = {}) {
     } else {
       // Non-streaming response
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      console.log('✅ Gemini responded successfully');
       return {
         choices: [{
           message: { content: text }
