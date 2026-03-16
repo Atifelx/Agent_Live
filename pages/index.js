@@ -409,8 +409,8 @@ export default function Home() {
       </Head>
 
       {/* Navigation */}
-      <nav className="border-b border-zinc-800/50 bg-[#0a0a0a]/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="w-full max-w-[1600px] mx-auto px-4 md:px-8 py-4 md:py-5 flex items-center justify-between">
+      <nav className="border-b border-zinc-800/50 bg-[#0a0a0a]/80 backdrop-blur-xl sticky top-0 z-50 h-[65px] md:h-[73px]">
+        <div className="w-full max-w-[1600px] mx-auto px-4 md:px-8 py-3 md:py-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             {/* Mobile sidebar toggle */}
             <button
@@ -458,7 +458,7 @@ export default function Home() {
         </div>
       )}
 
-      <main className="w-full max-w-[1600px] mx-auto px-4 md:px-8 py-4 md:py-8 h-[calc(100vh-65px)] md:h-[calc(100vh-81px)]">
+      <main className="w-full max-w-[1600px] mx-auto px-4 md:px-8 py-4 h-[calc(100vh-65px)] md:h-[calc(100vh-73px)]">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-8 h-full">
 
           {/* Sidebar */}
@@ -627,8 +627,8 @@ export default function Home() {
           {/* Chat Engine */}
           <Card className="lg:col-span-3 flex flex-col bg-zinc-900/20 border-zinc-800/50 overflow-hidden backdrop-blur-sm relative group shadow-2xl shadow-black/80">
             {/* Ambient Background Glow */}
-            <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-zinc-800/10 rounded-full blur-[160px] -z-10 pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-900/5 rounded-full blur-[140px] -z-10 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-[300px] h-[300px] md:w-[500px] md:h-[500px] bg-zinc-800/10 rounded-full blur-[100px] md:blur-[160px] -z-10 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-[250px] h-[250px] md:w-[400px] md:h-[400px] bg-indigo-900/5 rounded-full blur-[80px] md:blur-[140px] -z-10 pointer-events-none" />
 
             <ScrollArea className="flex-1 p-4 md:p-8" ref={scrollRef}>
               <div className="max-w-6xl mx-auto space-y-8 md:space-y-10 pb-6">
@@ -713,8 +713,8 @@ export default function Home() {
             </ScrollArea>
 
             {/* Input Engine */}
-            <div className="p-8 bg-[#0a0a0a]/80 backdrop-blur-2xl border-t border-zinc-800/50">
-              <div className="max-w-6xl mx-auto flex items-center space-x-4">
+            <div className="p-4 md:p-6 bg-[#0a0a0a]/80 backdrop-blur-2xl border-t border-zinc-800/50 mt-auto">
+              <div className="max-w-6xl mx-auto flex items-center space-x-3 md:space-x-4">
                 <div className="relative flex-1 group">
                   <Input
                     value={input}
@@ -722,18 +722,18 @@ export default function Home() {
                     onKeyPress={(e) => e.key === 'Enter' && handleSend()}
                     placeholder="Analyze neural patterns and document context..."
                     disabled={loading || uploading}
-                    className="h-16 bg-zinc-900/60 border-zinc-800 focus:border-zinc-400 focus:ring-0 rounded-2xl px-6 text-base transition-all placeholder:text-zinc-600"
+                    className="h-14 md:h-16 bg-zinc-900/60 border-zinc-800 focus:border-zinc-400 focus:ring-0 rounded-2xl px-6 text-sm md:text-base transition-all placeholder:text-zinc-600"
                   />
-                  <div className="absolute right-5 top-1/2 -translate-y-1/2 flex items-center h-full pointer-events-none">
-                    <span className="text-[11px] font-bold text-zinc-600 bg-zinc-950 px-2 py-1 rounded-lg border border-zinc-800 shadow-inner tracking-widest group-focus-within:border-zinc-500 transition-colors">⌘ ENTER</span>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center h-full pointer-events-none">
+                    <span className="text-[10px] md:text-[11px] font-bold text-zinc-600 bg-zinc-950 px-2 py-1 rounded-lg border border-zinc-800 shadow-inner tracking-widest group-focus-within:border-zinc-500 transition-colors hidden sm:block">⌘ ENTER</span>
                   </div>
                 </div>
                 <Button
                   onClick={handleSend}
                   disabled={loading || !input.trim() || uploading}
-                  className="h-16 w-16 rounded-2xl bg-zinc-100 hover:bg-zinc-200 text-zinc-900 shadow-2xl transition-all active:scale-95"
+                  className="h-14 w-14 md:h-16 md:w-16 rounded-2xl bg-zinc-100 hover:bg-zinc-200 text-zinc-900 shadow-2xl transition-all active:scale-95 flex-shrink-0"
                 >
-                  {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Send className="w-6 h-6" />}
+                  {loading ? <Loader2 className="w-5 h-5 md:w-6 md:h-6 animate-spin" /> : <Send className="w-5 h-5 md:w-6 md:h-6" />}
                 </Button>
               </div>
             </div>
