@@ -113,10 +113,8 @@ async function searchWeb(query) {
   }
 }
 
-// Two-model strategy: fast router + powerful synthesizer
-// ROUTING_MODEL: Fast, cheap — decides if tool needed (must respond in <3s)
-// CHAT_MODEL: Powerful — only used for the final answer stream
-const ROUTING_MODEL = 'meta-llama/llama-3.1-8b-instruct:free';
+// Using the reliable Nemotron 3 Super (free) for all steps
+const ROUTING_MODEL = CHAT_MODEL;
 
 // Agentic AI: Multi-Tool Facilitator (Recursive Reasoning Loop)
 async function processWithAgent(userMessage, chatHistory = [], activeDocs = [], onStream = () => { }) {
@@ -155,7 +153,8 @@ RULES:
   const maxTurns = 3; // Reduced from 4 to stay within timeout
   let accumulatedSources = [];
 
-  onStream('thought', 'Analyzing your request...');
+  // Heartbeat to prevent 30s timeout while model "thinks" or tools run
+  onStream('thought', 'Initializing...'); 
 
   while (turns < maxTurns) {
     turns++;
@@ -165,10 +164,17 @@ RULES:
       model: ROUTING_MODEL,
       messages: currentMessages,
       temperature: 0.1,
-      max_tokens: 200, // Only need a short tool-call or "answer directly"
+      max_tokens: 512, // Increased for robustness on complex instructions
     });
 
-    const agentResponse = response.choices[0].message.content;
+    const agentResponse = response.choices[0].message.content || "";
+    console.log(`[AGENT TURN ${turns}] Response: ${agentResponse.substring(0, 100)}...`);
+
+    if (!agentResponse) {
+      // If we get an empty response, treat as a direct synthesis phase
+      turns = maxTurns;
+      continue;
+    }
 
     // Tool Detection
     let toolName = null;
@@ -183,8 +189,7 @@ RULES:
     }
 
     if (toolName && searchQuery) {
-      const actionLabel = toolName === 'searchDocuments' ? 'Sifting through private library' : 'Scanning live web';
-      onStream('thought', `${actionLabel}: "${searchQuery}"`);
+      // Silent tool execution
 
       let toolResult = null;
       if (toolName === 'searchDocuments') {
@@ -209,7 +214,7 @@ RULES:
       }
     } else {
       // No tool call → Stream final answer with the powerful model
-      onStream('thought', 'Synthesizing response...');
+      // Silent synthesis
       onStream('sources', [...new Set(accumulatedSources)].join(','));
 
       const finalStream = await openai.chat.completions.create({

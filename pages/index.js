@@ -265,14 +265,13 @@ export default function Home() {
       setSessionName(suggestedName);
     }
 
-    // Atomic update: User msg + Assistant placeholder
     setMessages(prev => [
       ...prev,
       { role: 'user', content: userMessage },
       {
         role: 'assistant',
         content: '',
-        thinkingSteps: ['Waking up intelligence engine...'],
+        thinkingSteps: [],
         loadingThoughts: true
       }
     ]);
@@ -291,7 +290,7 @@ export default function Home() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let accumulatedContent = '';
-      let accumulatedThoughts = ['Waking up intelligence engine...'];
+      let accumulatedThoughts = [];
       let accumulatedSources = [];
       let streamBuffer = '';
 
@@ -305,26 +304,7 @@ export default function Home() {
       ];
       let thoughtIdx = 0;
 
-      const thinkingTimer = setInterval(() => {
-        if (accumulatedContent.length > 0) {
-          clearInterval(thinkingTimer);
-          return;
-        }
-
-        const nextThought = genericThoughts[thoughtIdx];
-        if (nextThought && !accumulatedThoughts.includes(nextThought)) {
-          accumulatedThoughts.push(nextThought);
-          setMessages(prev => {
-            const updated = [...prev];
-            const idx = updated.findLastIndex(m => m.role === 'assistant');
-            if (idx !== -1) {
-              updated[idx] = { ...updated[idx], thinkingSteps: [...accumulatedThoughts] };
-            }
-            return updated;
-          });
-          thoughtIdx++;
-        }
-      }, 3000);
+      // Removed thinkingTimer for cleaner UI
 
       const processLine = (line) => {
         if (!line.trim()) return;
@@ -346,8 +326,7 @@ export default function Home() {
               accumulatedSources = content.split(',').map(s => s.trim());
               updated[idx] = { ...updated[idx], sources: accumulatedSources, usedTool: true };
             } else if (type === 'answer') {
-              // Once actual answer starts, clear pacer
-              clearInterval(thinkingTimer);
+              // Once actual answer starts
               accumulatedContent += content;
               updated[idx] = {
                 ...updated[idx],
@@ -355,7 +334,7 @@ export default function Home() {
                 loadingThoughts: false
               };
             } else if (type === 'err') {
-              clearInterval(thinkingTimer);
+              // Silent error handling
               updated[idx] = { ...updated[idx], content: `System Error: ${content}`, loadingThoughts: false };
             }
             return updated;
@@ -383,7 +362,7 @@ export default function Home() {
         processLine(streamBuffer);
       }
 
-      clearInterval(thinkingTimer);
+      // Silent cleanup
 
     } catch (error) {
       console.error('Streaming Error:', error);
@@ -647,31 +626,7 @@ export default function Home() {
                     <div key={idx} className={`flex items-start ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out`}>
                       <div className={`max-w-[98%] w-full space-y-4`}>
 
-                        {/* Thinking Artifact (Real-time Reasoning) */}
-                        {msg.role === 'assistant' && msg.thinkingSteps && msg.thinkingSteps.length > 0 && (
-                          <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6 mb-2 backdrop-blur-sm shadow-xl border-white/5 animate-in zoom-in-95 duration-500">
-                            <div className="flex items-center space-x-3 mb-4">
-                              <div className="w-8 h-8 bg-zinc-800 rounded-lg flex items-center justify-center">
-                                <BrainCircuit className="w-4 h-4 text-emerald-500 animate-pulse" />
-                              </div>
-                              <span className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-400">Agentic Reasoning Path</span>
-                            </div>
-                            <div className="space-y-3">
-                              {msg.thinkingSteps.map((step, sIdx) => (
-                                <div key={sIdx} className="flex items-start space-x-3 text-sm text-zinc-300 animate-in fade-in slide-in-from-left-2 duration-300">
-                                  {sIdx === msg.thinkingSteps.length - 1 && msg.loadingThoughts ? (
-                                    <Loader2 className="w-4 h-4 text-emerald-500 animate-spin mt-0.5" />
-                                  ) : (
-                                    <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5" />
-                                  )}
-                                  <span className={sIdx === msg.thinkingSteps.length - 1 && msg.loadingThoughts ? "text-zinc-100 font-medium" : "text-zinc-400"}>
-                                    {step}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                        {/* Reasoning Path Removed as per user request */}
 
                         {(msg.content || msg.role === 'user') && (
                           <div className={`px-8 py-4 rounded-[2rem] shadow-2xl ${msg.role === 'user'
