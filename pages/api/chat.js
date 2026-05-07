@@ -15,8 +15,8 @@ const openai = new OpenAI({
   },
 });
 
-// Using NVIDIA Nemotron 3 Super (free)
-const CHAT_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
+// Using Gemini 2.0 Flash (ultra-fast and reliable)
+const CHAT_MODEL = 'google/gemini-2.0-flash-001';
 
 /**
  * Tool 1: Vector Database Search
@@ -136,6 +136,7 @@ RULES:
 - For simple greetings ("hi", "hello", "how are you"), answer DIRECTLY without using any tool.
 - To use a tool respond ONLY with: TOOL: <toolName>\nQUERY: <searchQuery>
 - After getting tool results, synthesize a helpful, non-repetitive answer.
+- ALWAYS use rich markdown. When listing items, ALWAYS format them as a beautiful bulleted (-) or numbered (1.) list with bold titles and newlines between items. Never write lists as a single paragraph.
 - NEVER repeat the same fact twice.
 - Follow the user's length constraints strictly.`;
 
@@ -148,94 +149,81 @@ RULES:
     { role: 'user', content: userMessage }
   ];
 
-  let currentMessages = [...routingMessages];
-  let turns = 0;
-  const maxTurns = 3; // Reduced from 4 to stay within timeout
+  onStream('thought', 'Analyzing request...');
+
+  // Step 1: Decision routing (exactly 1 fast call)
+  const response = await openai.chat.completions.create({
+    model: CHAT_MODEL,
+    messages: routingMessages,
+    temperature: 0.1,
+    max_tokens: 256,
+  });
+
+  const agentResponse = response.choices[0].message.content || "";
+  console.log(`[ROUTING DECISION]: ${agentResponse}`);
+
+  let toolName = null;
+  let searchQuery = null;
+  const toolMatch = agentResponse.match(/TOOL:\s*(\w+)/i);
+  const queryMatch = agentResponse.match(/QUERY:\s*(.+)/i);
+
+  if (toolMatch && queryMatch) {
+    toolName = toolMatch[1].trim();
+    searchQuery = queryMatch[1].trim();
+  }
+
+  let finalMessages = [...routingMessages];
   let accumulatedSources = [];
 
-  // Heartbeat to prevent 30s timeout while model "thinks" or tools run
-  onStream('thought', 'Initializing...'); 
-
-  while (turns < maxTurns) {
-    turns++;
-
-    // Use fast routing model for tool decision — critical for staying under Vercel timeout
-    const response = await openai.chat.completions.create({
-      model: ROUTING_MODEL,
-      messages: currentMessages,
-      temperature: 0.1,
-      max_tokens: 512, // Increased for robustness on complex instructions
-    });
-
-    const agentResponse = response.choices[0].message.content || "";
-    console.log(`[AGENT TURN ${turns}] Response: ${agentResponse.substring(0, 100)}...`);
-
-    if (!agentResponse) {
-      // If we get an empty response, treat as a direct synthesis phase
-      turns = maxTurns;
-      continue;
+  if (toolName && searchQuery) {
+    onStream('thought', `Searching ${toolName === 'searchDocuments' ? 'private library' : 'live web'}...`);
+    let toolResult = null;
+    if (toolName === 'searchDocuments') {
+      toolResult = await searchDocuments(searchQuery);
+    } else if (toolName === 'searchWeb' || toolName === 'searchTavily') {
+      toolResult = await searchWeb(searchQuery);
     }
 
-    // Tool Detection
-    let toolName = null;
-    let searchQuery = null;
-
-    const toolMatch = agentResponse.match(/TOOL:\s*(\w+)/i);
-    const queryMatch = agentResponse.match(/QUERY:\s*(.+)/i);
-
-    if (toolMatch && queryMatch) {
-      toolName = toolMatch[1].trim();
-      searchQuery = queryMatch[1].trim();
-    }
-
-    if (toolName && searchQuery) {
-      // Silent tool execution
-
-      let toolResult = null;
-      if (toolName === 'searchDocuments') {
-        toolResult = await searchDocuments(searchQuery);
-      } else if (toolName === 'searchWeb' || toolName === 'searchTavily') {
-        toolResult = await searchWeb(searchQuery);
-      }
-
-      if (toolResult && toolResult.success) {
-        currentMessages.push({ role: 'assistant', content: agentResponse });
-        currentMessages.push({
-          role: 'user',
-          content: `TOOL RESULTS:\n${toolResult.context}\n\nNow provide the final answer to the user. Be concise and non-repetitive.`
-        });
-
-        if (toolResult.results) accumulatedSources.push(...toolResult.results.map(r => r.source));
-        if (toolResult.sources) accumulatedSources.push(...toolResult.sources);
-      } else {
-        // Tool failed, answer from knowledge
-        currentMessages.push({ role: 'assistant', content: agentResponse });
-        currentMessages.push({ role: 'user', content: `Tool unavailable. Answer from your own knowledge.` });
-      }
-    } else {
-      // No tool call → Stream final answer with the powerful model
-      // Silent synthesis
-      onStream('sources', [...new Set(accumulatedSources)].join(','));
-
-      const finalStream = await openai.chat.completions.create({
-        model: CHAT_MODEL,
-        messages: [
-          ...currentMessages,
-          { role: 'system', content: "Provide your final answer. Be concise, accurate, and non-repetitive." }
-        ],
-        temperature: 0.5,
-        presence_penalty: 0.4,
-        frequency_penalty: 0.5,
-        stream: true,
+    if (toolResult && toolResult.success) {
+      finalMessages.push({ role: 'assistant', content: agentResponse });
+      finalMessages.push({
+        role: 'user',
+        content: `TOOL RESULTS:\n${toolResult.context}\n\nNow provide the final answer to the user. Be concise and non-repetitive.`
       });
 
-      for await (const chunk of finalStream) {
-        const content = chunk.choices[0]?.delta?.content || "";
-        if (content) {
-          onStream('answer', content);
-        }
+      if (toolResult.results) accumulatedSources.push(...toolResult.results.map(r => r.source));
+      if (toolResult.sources) accumulatedSources.push(...toolResult.sources);
+    } else {
+      finalMessages.push({ role: 'assistant', content: agentResponse });
+      finalMessages.push({ role: 'user', content: `Tool was unavailable. Answer from your own knowledge.` });
+    }
+  } else {
+    // Answer directly with no tools needed
+    finalMessages.push({ role: 'assistant', content: agentResponse });
+  }
+
+  // Step 2: Stream the final answer (Guaranteed to execute and close the stream)
+  onStream('sources', [...new Set(accumulatedSources)].join(','));
+
+  const finalStream = await openai.chat.completions.create({
+    model: CHAT_MODEL,
+    messages: [
+      ...finalMessages,
+      { 
+        role: 'system', 
+        content: "Provide your final answer. ALWAYS use rich markdown. When listing items, ALWAYS format them as a beautiful bulleted (-) or numbered (1.) list with bold key terms, proper headings, and clean newlines. Never write lists as a single paragraph." 
       }
-      return;
+    ],
+    temperature: 0.5,
+    presence_penalty: 0.4,
+    frequency_penalty: 0.5,
+    stream: true,
+  });
+
+  for await (const chunk of finalStream) {
+    const content = chunk.choices[0]?.delta?.content || "";
+    if (content) {
+      onStream('answer', content);
     }
   }
 }

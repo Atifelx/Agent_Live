@@ -174,3 +174,47 @@
     overflow-x: auto;
   }
 }
+
+/* Custom Premium Claude-like Thinking Animation */
+@keyframes claude-breathe {
+  0%, 100% {
+    transform: scale(0.97);
+    opacity: 0.4;
+    filter: blur(1px);
+  }
+  50% {
+    transform: scale(1.03);
+    opacity: 1;
+    filter: blur(0px);
+  }
+}
+
+@keyframes dot-wave {
+  0%, 100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  50% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
+}
+
+.animate-claude-breathe {
+  animation: claude-breathe 2.4s ease-in-out infinite;
+}
+
+.animate-dot-wave-1 {
+  animation: dot-wave 1.4s ease-in-out infinite;
+  animation-delay: 0s;
+}
+
+.animate-dot-wave-2 {
+  animation: dot-wave 1.4s ease-in-out infinite;
+  animation-delay: 0.2s;
+}
+
+.animate-dot-wave-3 {
+  animation: dot-wave 1.4s ease-in-out infinite;
+  animation-delay: 0.4s;
+}

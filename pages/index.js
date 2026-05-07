@@ -452,10 +452,10 @@ export default function Home() {
             px-4 lg:px-0
             space-y-6 md:space-y-8 flex flex-col
           `}>
-            <Card className="bg-zinc-900/40 border-zinc-800/50 backdrop-blur-md p-2">
+            <Card className="bg-gradient-to-b from-zinc-900/50 to-zinc-950/75 border-zinc-900/80 backdrop-blur-md p-2 shadow-xl shadow-black/40">
               <CardHeader className="pb-5">
-                <CardTitle className="text-sm font-semibold text-zinc-500 uppercase tracking-widest flex items-center">
-                  <Upload className="w-4 h-4 mr-2" />
+                <CardTitle className="text-xs font-bold text-zinc-500 uppercase tracking-[0.2em] flex items-center">
+                  <Upload className="w-4 h-4 mr-2 text-zinc-400" />
                   Index New Source
                 </CardTitle>
               </CardHeader>
@@ -472,10 +472,10 @@ export default function Home() {
                 <Button
                   asChild
                   disabled={uploading}
-                  className="w-full h-14 bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition-all shadow-2xl shadow-zinc-950/40 text-base font-semibold rounded-xl"
+                  className="w-full h-14 bg-white hover:bg-zinc-200 text-zinc-950 shadow-xl shadow-white/5 text-base font-semibold rounded-xl border border-white/10 transition-all duration-300 active:scale-[0.98]"
                 >
                   <label htmlFor="file-upload" className="cursor-pointer">
-                    {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Database className="w-5 h-5 mr-3" />}
+                    {uploading ? <Loader2 className="w-5 h-5 animate-spin text-zinc-950" /> : <Database className="w-5 h-5 mr-3 text-zinc-950" />}
                     {uploading ? 'Neural Processing' : 'Inject Context'}
                   </label>
                 </Button>
@@ -587,7 +587,7 @@ export default function Home() {
               <h4 className="text-xs font-bold text-zinc-600 uppercase tracking-[0.2em]">Infrastructure</h4>
               {[
                 { icon: Search, label: "Vector Retrieval", desc: "Pinecone Inference (RAG)" },
-                { icon: Sparkles, label: "Neural Answer", desc: "NVIDIA Nemotron 3" },
+                { icon: Sparkles, label: "Neural Answer", desc: "Gemini 2.0 Flash" },
                 { icon: BookOpen, label: "RAG Pipeline", desc: "Sourcing Active & Verified" }
               ].map((item, i) => (
                 <div key={i} className="flex items-start space-x-4 group">
@@ -629,14 +629,27 @@ export default function Home() {
                         {/* Reasoning Path Removed as per user request */}
 
                         {(msg.content || msg.role === 'user') && (
-                          <div className={`px-8 py-4 rounded-[2rem] shadow-2xl ${msg.role === 'user'
-                            ? 'bg-zinc-100 text-zinc-900 font-medium shadow-white/5'
-                            : 'bg-zinc-900/80 border border-zinc-800 text-zinc-100 border-white/5'
+                          <div className={`px-7 py-5 rounded-2xl shadow-xl ${msg.role === 'user'
+                            ? 'bg-zinc-100 text-zinc-950 font-medium'
+                            : 'bg-zinc-900/40 border border-zinc-800/60 text-zinc-100 backdrop-blur-md'
                             }`}>
                             <div className="prose-aura">
                               <ReactMarkdown>
                                 {msg.content}
                               </ReactMarkdown>
+                            </div>
+                          </div>
+                        )}
+
+                        {msg.role === 'assistant' && msg.loadingThoughts && (
+                          <div className="flex items-center space-x-2 animate-claude-breathe">
+                            <div className="flex items-center bg-zinc-900/40 border border-zinc-800/60 px-6 py-4 rounded-2xl shadow-xl text-zinc-300">
+                              <span className="text-sm font-semibold tracking-wide text-zinc-400 mr-3 select-none">Clever Chat is thinking</span>
+                              <div className="flex space-x-1.5 items-center pt-1">
+                                <div className="w-2 h-2 bg-white rounded-full animate-dot-wave-1" />
+                                <div className="w-2 h-2 bg-white rounded-full animate-dot-wave-2" />
+                                <div className="w-2 h-2 bg-white rounded-full animate-dot-wave-3" />
+                              </div>
                             </div>
                           </div>
                         )}
@@ -668,27 +681,27 @@ export default function Home() {
             </ScrollArea>
 
             {/* Input Engine */}
-            <div className="p-8 bg-[#0a0a0a]/80 backdrop-blur-2xl border-t border-zinc-800/50">
+            <div className="p-8 bg-[#0a0a0a]/90 backdrop-blur-3xl border-t border-zinc-800/40">
               <div className="max-w-6xl mx-auto flex items-center space-x-4">
                 <div className="relative flex-1 group">
                   <Input
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                    placeholder="Analyze neural patterns and document context..."
+                    placeholder="Ask anything or analyze your uploaded files..."
                     disabled={loading || uploading}
-                    className="h-16 bg-zinc-900/60 border-zinc-800 focus:border-zinc-400 focus:ring-0 rounded-2xl px-6 text-base transition-all placeholder:text-zinc-600"
+                    className="h-16 bg-zinc-900/35 border-zinc-800/80 focus:border-zinc-700/80 focus:ring-0 rounded-2xl px-6 text-base transition-all duration-300 placeholder:text-zinc-600 focus-within:shadow-[0_0_25px_rgba(255,255,255,0.015)] text-zinc-100"
                   />
                   <div className="absolute right-5 top-1/2 -translate-y-1/2 flex items-center h-full pointer-events-none">
-                    <span className="text-[11px] font-bold text-zinc-600 bg-zinc-950 px-2 py-1 rounded-lg border border-zinc-800 shadow-inner tracking-widest group-focus-within:border-zinc-500 transition-colors">⌘ ENTER</span>
+                    <span className="text-[10px] font-semibold text-zinc-500 bg-zinc-950/80 px-2.5 py-1.5 rounded-lg border border-zinc-800/80 shadow-inner tracking-widest group-focus-within:border-zinc-600 group-focus-within:text-zinc-300 transition-all duration-300">⌘ ENTER</span>
                   </div>
                 </div>
                 <Button
                   onClick={handleSend}
                   disabled={loading || !input.trim() || uploading}
-                  className="h-16 w-16 rounded-2xl bg-zinc-100 hover:bg-zinc-200 text-zinc-900 shadow-2xl transition-all active:scale-95"
+                  className="h-16 w-16 rounded-2xl bg-white hover:bg-zinc-200 text-zinc-950 shadow-lg shadow-white/5 border border-white/10 transition-all duration-300 active:scale-95 flex items-center justify-center"
                 >
-                  {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Send className="w-6 h-6" />}
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin text-zinc-950" /> : <Send className="w-5 h-5 text-zinc-950" />}
                 </Button>
               </div>
             </div>
