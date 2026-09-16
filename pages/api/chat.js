@@ -175,7 +175,7 @@ RULES:
     { role: 'user', content: userMessage }
   ];
 
-  onStream('thought', 'Analyzing request...');
+  onStream('stage', 'routing');
 
   const response = await callWithFallback({
     messages: routingMessages,
@@ -184,7 +184,6 @@ RULES:
   });
 
   let agentResponse = response.choices[0].message.content || "";
-  // Strip reasoning chain-of-thought prefixes from reasoning models
   const toolIdx = agentResponse.search(/TOOL:\s*\w+/i);
   if (toolIdx > 0) {
     agentResponse = agentResponse.substring(toolIdx);
@@ -203,9 +202,17 @@ RULES:
 
   let finalMessages = [...routingMessages];
   let accumulatedSources = [];
+  let pipelineType = 'direct';
 
   if (toolName && searchQuery) {
-    onStream('thought', `Searching ${toolName === 'searchDocuments' ? 'private library' : 'live web'}...`);
+    if (toolName === 'searchDocuments') {
+      pipelineType = 'rag';
+      onStream('stage', 'rag');
+    } else {
+      pipelineType = 'web';
+      onStream('stage', 'web');
+    }
+
     let toolResult = null;
     if (toolName === 'searchDocuments') {
       toolResult = await searchDocuments(searchQuery);
@@ -227,9 +234,12 @@ RULES:
       finalMessages.push({ role: 'user', content: `Tool was unavailable. Answer from your own knowledge.` });
     }
   } else {
+    pipelineType = 'direct';
     finalMessages.push({ role: 'assistant', content: agentResponse });
   }
 
+  onStream('stage', 'generating');
+  onStream('pipeline', pipelineType);
   onStream('sources', [...new Set(accumulatedSources)].join(','));
 
   // Stream the final answer with fallback — try each model until one streams

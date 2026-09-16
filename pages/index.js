@@ -32,6 +32,10 @@ export default function Home() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [currentStage, setCurrentStage] = useState('');
+  const [pipelineType, setPipelineType] = useState('');
+  const timerRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState('');
@@ -251,6 +255,13 @@ export default function Home() {
     const userMessage = input.trim();
     setInput('');
     setLoading(true);
+    setElapsedTime(0);
+    setCurrentStage('routing');
+    setPipelineType('');
+    const timerStart = Date.now();
+    timerRef.current = setInterval(() => {
+      setElapsedTime(((Date.now() - timerStart) / 1000));
+    }, 50);
 
     // Auto-generate session name if it's default
     if (sessionName === 'New Intelligence Session' || messages.length <= 1) {
@@ -312,6 +323,23 @@ export default function Home() {
           const data = JSON.parse(line);
           const { type, content } = data;
 
+          if (type === 'stage') {
+            setCurrentStage(content);
+            return;
+          }
+          if (type === 'pipeline') {
+            setPipelineType(content);
+            setMessages(prev => {
+              const updated = [...prev];
+              const idx = updated.findLastIndex(m => m.role === 'assistant');
+              if (idx !== -1) {
+                updated[idx] = { ...updated[idx], pipelineLabel: content };
+              }
+              return updated;
+            });
+            return;
+          }
+
           setMessages(prev => {
             const updated = [...prev];
             const idx = updated.findLastIndex(m => m.role === 'assistant');
@@ -323,18 +351,21 @@ export default function Home() {
                 updated[idx] = { ...updated[idx], thinkingSteps: [...accumulatedThoughts] };
               }
             } else if (type === 'sources') {
-              accumulatedSources = content.split(',').map(s => s.trim());
-              updated[idx] = { ...updated[idx], sources: accumulatedSources, usedTool: true };
+              accumulatedSources = content.split(',').map(s => s.trim()).filter(Boolean);
+              if (accumulatedSources.length > 0) {
+                updated[idx] = { ...updated[idx], sources: accumulatedSources, usedTool: true };
+              }
             } else if (type === 'answer') {
-              // Once actual answer starts
               accumulatedContent += content;
+              const elapsed = (Date.now() - timerStart) / 1000;
               updated[idx] = {
                 ...updated[idx],
                 content: accumulatedContent,
-                loadingThoughts: false
+                loadingThoughts: false,
+                latency: elapsed,
+                pipelineLabel: updated[idx].pipelineLabel || 'direct',
               };
             } else if (type === 'err') {
-              // Silent error handling
               updated[idx] = { ...updated[idx], content: `System Error: ${content}`, loadingThoughts: false };
             }
             return updated;
@@ -375,6 +406,8 @@ export default function Home() {
         return updated;
       });
     }
+    clearInterval(timerRef.current);
+    setCurrentStage('');
     setLoading(false);
   };
 
@@ -587,7 +620,7 @@ export default function Home() {
               <h4 className="text-xs font-bold text-zinc-600 uppercase tracking-[0.2em]">Infrastructure</h4>
               {[
                 { icon: Search, label: "Vector Retrieval", desc: "Pinecone Inference (RAG)" },
-                { icon: Sparkles, label: "Neural Answer", desc: "Gemini 2.0 Flash" },
+                { icon: Sparkles, label: "Neural Answer", desc: "Nemotron 3 Super (Free)" },
                 { icon: BookOpen, label: "RAG Pipeline", desc: "Sourcing Active & Verified" }
               ].map((item, i) => (
                 <div key={i} className="flex items-start space-x-4 group">
@@ -642,33 +675,102 @@ export default function Home() {
                         )}
 
                         {msg.role === 'assistant' && msg.loadingThoughts && (
-                          <div className="flex items-center space-x-2 animate-claude-breathe">
-                            <div className="flex items-center bg-zinc-900/40 border border-zinc-800/60 px-6 py-4 rounded-2xl shadow-xl text-zinc-300">
-                              <span className="text-sm font-semibold tracking-wide text-zinc-400 mr-3 select-none">Clever Chat is thinking</span>
-                              <div className="flex space-x-1.5 items-center pt-1">
-                                <div className="w-2 h-2 bg-white rounded-full animate-dot-wave-1" />
-                                <div className="w-2 h-2 bg-white rounded-full animate-dot-wave-2" />
-                                <div className="w-2 h-2 bg-white rounded-full animate-dot-wave-3" />
+                          <div className="pipeline-card animate-in fade-in slide-in-from-bottom-2 duration-500">
+                            <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl shadow-xl overflow-hidden backdrop-blur-md">
+                              <div className="flex items-center gap-4 px-6 py-5">
+                                {/* Circular Timer */}
+                                <div className="relative w-14 h-14 flex-shrink-0">
+                                  <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
+                                    <circle cx="28" cy="28" r="24" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3" />
+                                    <circle cx="28" cy="28" r="24" fill="none" stroke="url(#timerGrad)" strokeWidth="3" strokeLinecap="round"
+                                      strokeDasharray={`${Math.min(elapsedTime / 30, 1) * 150.8} 150.8`}
+                                      className="transition-all duration-100" />
+                                    <defs>
+                                      <linearGradient id="timerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                        <stop offset="0%" stopColor="#10b981" />
+                                        <stop offset="100%" stopColor="#6366f1" />
+                                      </linearGradient>
+                                    </defs>
+                                  </svg>
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <span className="text-xs font-bold text-white tabular-nums">{elapsedTime.toFixed(1)}s</span>
+                                  </div>
+                                </div>
+
+                                {/* Pipeline Stages */}
+                                <div className="flex-1 space-y-2.5">
+                                  {[
+                                    { id: 'routing', label: 'Agent Routing', icon: '🧠' },
+                                    { id: 'rag', label: 'RAG — Vector Search', icon: '🔍' },
+                                    { id: 'web', label: 'Live Web Search', icon: '🌐' },
+                                    { id: 'generating', label: 'Generating Answer', icon: '✨' },
+                                  ].map((stage) => {
+                                    const isActive = currentStage === stage.id;
+                                    const isDone = (
+                                      (stage.id === 'routing' && currentStage !== 'routing') ||
+                                      (stage.id === 'rag' && (currentStage === 'generating' || currentStage === '')) ||
+                                      (stage.id === 'web' && (currentStage === 'generating' || currentStage === ''))
+                                    );
+                                    const isHidden = (
+                                      (stage.id === 'rag' && pipelineType && pipelineType !== 'rag') ||
+                                      (stage.id === 'web' && pipelineType && pipelineType !== 'web')
+                                    );
+                                    if (isHidden) return null;
+
+                                    return (
+                                      <div key={stage.id} className={`flex items-center gap-2.5 transition-all duration-300 ${isActive ? 'opacity-100' : isDone ? 'opacity-40' : 'opacity-20'}`}>
+                                        {isActive ? (
+                                          <div className="w-4 h-4 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin flex-shrink-0" />
+                                        ) : isDone ? (
+                                          <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                                        ) : (
+                                          <div className="w-4 h-4 rounded-full border border-zinc-700 flex-shrink-0" />
+                                        )}
+                                        <span className={`text-xs font-semibold tracking-wide ${isActive ? 'text-white' : 'text-zinc-500'}`}>
+                                          {stage.icon} {stage.label}
+                                          {isActive && <span className="ml-1 text-emerald-400 animate-pulse">...</span>}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             </div>
                           </div>
                         )}
 
-                        {msg.role === 'assistant' && msg.usedTool && (
+                        {msg.role === 'assistant' && !msg.loadingThoughts && msg.content && (msg.pipelineLabel || msg.latency || msg.usedTool) && (
                           <div className="flex flex-col space-y-3 ml-6 animate-in fade-in slide-in-from-top-2 duration-500">
-                            <div className="flex items-center space-x-2 text-xs text-zinc-500 font-bold uppercase tracking-[0.2em]">
-                              <Search className="w-4 h-4 text-emerald-500" />
-                              <span>Verified Context Retrieval</span>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {msg.pipelineLabel && (
+                                <Badge className="bg-zinc-800/80 border border-zinc-700/50 text-[10px] text-zinc-300 py-1 px-3 rounded-lg font-bold uppercase tracking-wider">
+                                  {msg.pipelineLabel === 'rag' && '🔍 RAG Pipeline'}
+                                  {msg.pipelineLabel === 'web' && '🌐 Web Search'}
+                                  {msg.pipelineLabel === 'direct' && '🧠 AI Direct'}
+                                </Badge>
+                              )}
+                              {msg.latency && (
+                                <Badge className="bg-emerald-500/10 border border-emerald-500/20 text-[10px] text-emerald-400 py-1 px-3 rounded-lg font-bold tabular-nums">
+                                  ⚡ {msg.latency.toFixed(1)}s
+                                </Badge>
+                              )}
                             </div>
-                            {msg.sources && msg.sources.length > 0 && (
-                              <div className="flex flex-wrap gap-2.5">
-                                {Array.from(new Set(msg.sources)).map((s, i) => (
-                                  <Badge key={i} variant="outline" className="bg-zinc-900/80 border-zinc-700 text-xs text-zinc-400 capitalize py-1.5 px-4 rounded-xl shadow-inner font-bold tracking-tight">
-                                    <FileText className="w-3.5 h-3.5 mr-2 text-zinc-500" />
-                                    {s}
-                                  </Badge>
-                                ))}
-                              </div>
+
+                            {msg.usedTool && msg.sources && msg.sources.length > 0 && (
+                              <>
+                                <div className="flex items-center space-x-2 text-xs text-zinc-500 font-bold uppercase tracking-[0.2em]">
+                                  <Search className="w-4 h-4 text-emerald-500" />
+                                  <span>Verified Context Retrieval</span>
+                                </div>
+                                <div className="flex flex-wrap gap-2.5">
+                                  {Array.from(new Set(msg.sources)).map((s, i) => (
+                                    <Badge key={i} variant="outline" className="bg-zinc-900/80 border-zinc-700 text-xs text-zinc-400 capitalize py-1.5 px-4 rounded-xl shadow-inner font-bold tracking-tight">
+                                      <FileText className="w-3.5 h-3.5 mr-2 text-zinc-500" />
+                                      {s}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </>
                             )}
                           </div>
                         )}
