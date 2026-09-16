@@ -35,6 +35,7 @@ export default function Home() {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [currentStage, setCurrentStage] = useState('');
   const [pipelineType, setPipelineType] = useState('');
+  const [modelEvents, setModelEvents] = useState([]);
   const timerRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -258,6 +259,7 @@ export default function Home() {
     setElapsedTime(0);
     setCurrentStage('routing');
     setPipelineType('');
+    setModelEvents([]);
     const timerStart = Date.now();
     timerRef.current = setInterval(() => {
       setElapsedTime(((Date.now() - timerStart) / 1000));
@@ -323,6 +325,10 @@ export default function Home() {
           const data = JSON.parse(line);
           const { type, content } = data;
 
+          if (type === 'model_try' || type === 'model_ok' || type === 'model_fail') {
+            setModelEvents(prev => [...prev, { type, content, ts: Date.now() }]);
+            return;
+          }
           if (type === 'stage') {
             setCurrentStage(content);
             return;
@@ -620,7 +626,7 @@ export default function Home() {
               <h4 className="text-xs font-bold text-zinc-600 uppercase tracking-[0.2em]">Infrastructure</h4>
               {[
                 { icon: Search, label: "Vector Retrieval", desc: "Pinecone Inference (RAG)" },
-                { icon: Sparkles, label: "Neural Answer", desc: "Nemotron 3 Super (Free)" },
+                { icon: Sparkles, label: "Neural Answer", desc: "Nemotron 3.5 Lightning (Free)" },
                 { icon: BookOpen, label: "RAG Pipeline", desc: "Sourcing Active & Verified" }
               ].map((item, i) => (
                 <div key={i} className="flex items-start space-x-4 group">
@@ -735,6 +741,36 @@ export default function Home() {
                                   })}
                                 </div>
                               </div>
+
+                              {/* Model Events Feed */}
+                              {modelEvents.length > 0 && (
+                                <div className="border-t border-zinc-800/40 px-6 py-3 space-y-1.5 max-h-32 overflow-y-auto">
+                                  <div className="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.2em] mb-2">Model Router</div>
+                                  {modelEvents.map((evt, i) => (
+                                    <div key={i} className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-300">
+                                      {evt.type === 'model_try' && (
+                                        <>
+                                          <div className="w-2.5 h-2.5 rounded-full border border-amber-500 border-t-transparent animate-spin flex-shrink-0" />
+                                          <span className="text-[11px] text-amber-400/80 font-mono truncate">Trying {evt.content}...</span>
+                                        </>
+                                      )}
+                                      {evt.type === 'model_fail' && (
+                                        <>
+                                          <div className="w-2.5 h-2.5 rounded-full bg-red-500/60 flex-shrink-0" />
+                                          <span className="text-[11px] text-red-400/70 font-mono truncate line-through">{evt.content.split('|')[0]}</span>
+                                          <span className="text-[9px] text-red-500/50 truncate">{evt.content.split('|')[1]}</span>
+                                        </>
+                                      )}
+                                      {evt.type === 'model_ok' && (
+                                        <>
+                                          <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500 flex-shrink-0" />
+                                          <span className="text-[11px] text-emerald-400 font-mono font-bold">{evt.content} ✓</span>
+                                        </>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                         )}

@@ -18,8 +18,6 @@ const openai = new OpenAI({
 const MODELS = [
   'nvidia/nemotron-3-super-120b-a12b:free',
   'nvidia/nemotron-3.5-lightning:free',
-  'poolside/laguna-xs-2.1:free',
-  'thinkingmachines/inkling-small:free',
 ];
 
 function extractContent(message) {
@@ -28,22 +26,36 @@ function extractContent(message) {
   return "";
 }
 
-async function callWithFallback(params, maxRetries = 3) {
+function shortModelName(model) {
+  return model.replace(':free', '').split('/').pop();
+}
+
+async function callWithFallback(params, onStream = () => {}, maxRetries = 2) {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     for (const model of MODELS) {
       try {
+        const name = shortModelName(model);
         console.log(`[Attempt ${attempt + 1}] Trying model: ${model}`);
+        onStream('model_try', name);
         const result = await openai.chat.completions.create({ ...params, model });
-        if (params.stream) return result;
+        if (params.stream) {
+          onStream('model_ok', name);
+          return result;
+        }
         const msg = result.choices?.[0]?.message;
         const text = extractContent(msg || {});
         if (text) {
           if (!msg.content) msg.content = text;
+          onStream('model_ok', name);
           return result;
         }
         console.log(`[${model}] Empty content, trying next model`);
+        onStream('model_fail', `${name}|empty response`);
       } catch (err) {
+        const name = shortModelName(model);
+        const reason = err.message.length > 60 ? err.message.slice(0, 60) + '…' : err.message;
         console.log(`[${model}] Error: ${err.message}, trying next model`);
+        onStream('model_fail', `${name}|${reason}`);
       }
     }
   }
@@ -143,139 +155,161 @@ async function searchWeb(query) {
   }
 }
 
+function smartRoute(userMessage, activeDocs) {
+  const msg = userMessage.trim();
+  const lower = msg.toLowerCase();
+
+  const greetingPattern = /^(hi|hello|hey|yo|sup|thanks|thank you|bye|good\s*(morning|evening|night)|how\s+are\s+you|what'?s\s+up|who\s+are\s+you|what\s+can\s+you\s+do|help)\b/i;
+  if (greetingPattern.test(msg)) return 'direct';
+
+  const webPatterns = [
+    /\b(latest|current|recent|today|yesterday|this week|this month|breaking|trending|news)\b/i,
+    /\b(what is|who is|where is)\b.*\b(right now|currently|in 202\d)\b/i,
+    /\b(stock|price|weather|score|election|update)\b/i,
+  ];
+  if (webPatterns.some(p => p.test(msg))) return 'web';
+
+  if (activeDocs.length > 0) {
+    const docNames = activeDocs.map(d => d.toLowerCase());
+    const docKeywords = docNames.flatMap(d =>
+      d.replace(/\.pdf|\.txt|\.docx/g, '').split(/[-_,.\s]+/).filter(w => w.length > 2)
+    );
+
+    const docPatterns = [
+      /\b(law|chapter|page|section|rule|principle|lesson)\s*\d/i,
+      /\b(book|document|pdf|file|upload|summary|summarize|according\s+to)\b/i,
+      /\b(what\s+does|what\s+is|explain|describe|tell\s+me\s+about|list)\b/i,
+    ];
+
+    if (docKeywords.some(kw => lower.includes(kw))) return 'rag';
+    if (docPatterns.some(p => p.test(msg))) return 'rag';
+
+    if (msg.endsWith('?') && msg.split(' ').length >= 3) return 'rag';
+  }
+
+  return 'direct';
+}
+
+const RAG_RELEVANCE_THRESHOLD = 0.3;
+
 async function processWithAgent(userMessage, chatHistory = [], activeDocs = [], onStream = () => { }) {
   const libraryContext = activeDocs.length > 0
-    ? `Currently active in your SECURE PRIVATE LIBRARY: [${activeDocs.join(', ')}].`
-    : "Your private library is currently empty. Direct the user to upload documents if they ask about private files.";
+    ? `You have access to the user's private knowledge base containing: [${activeDocs.join(', ')}]. When context is provided from these documents, use it to answer accurately.`
+    : "The user has no documents uploaded yet.";
 
-  const systemPrompt = `You are Clever Chat, a sophisticated AI research partner.
-
-${libraryContext}
-
-You have access to TWO tools:
-1. searchDocuments(query) - Search the PRIVATE LIBRARY for facts in uploaded files.
-2. searchWeb(query) - Access the LIVE WEB for current events and real-world examples.
-
-RULES:
-- If the user asks about uploaded documents, use searchDocuments.
-- If the user asks about general knowledge or current events, use searchWeb.
-- For simple greetings ("hi", "hello", "how are you"), answer DIRECTLY without using any tool.
-- To use a tool respond ONLY with: TOOL: <toolName>\nQUERY: <searchQuery>
-- After getting tool results, synthesize a helpful, non-repetitive answer.
-- ALWAYS use rich markdown. When listing items, ALWAYS format them as a beautiful bulleted (-) or numbered (1.) list with bold titles and newlines between items. Never write lists as a single paragraph.
-- NEVER repeat the same fact twice.
-- Follow the user's length constraints strictly.`;
-
-  const routingMessages = [
-    { role: 'system', content: systemPrompt },
-    ...chatHistory.slice(-6).map(msg => ({
-      role: msg.role === 'user' ? 'user' : 'assistant',
-      content: msg.content
-    })),
-    { role: 'user', content: userMessage }
-  ];
+  const route = smartRoute(userMessage, activeDocs);
+  console.log(`[SMART ROUTE]: "${userMessage}" → ${route}`);
 
   onStream('stage', 'routing');
 
-  const response = await callWithFallback({
-    messages: routingMessages,
-    temperature: 0.1,
-    max_tokens: 256,
-  });
-
-  let agentResponse = response.choices[0].message.content || "";
-  const toolIdx = agentResponse.search(/TOOL:\s*\w+/i);
-  if (toolIdx > 0) {
-    agentResponse = agentResponse.substring(toolIdx);
-  }
-  console.log(`[ROUTING DECISION]: ${agentResponse}`);
-
-  let toolName = null;
-  let searchQuery = null;
-  const toolMatch = agentResponse.match(/TOOL:\s*(\w+)/i);
-  const queryMatch = agentResponse.match(/QUERY:\s*(.+)/i);
-
-  if (toolMatch && queryMatch) {
-    toolName = toolMatch[1].trim();
-    searchQuery = queryMatch[1].trim();
-  }
-
-  let finalMessages = [...routingMessages];
+  let pipelineType = route;
   let accumulatedSources = [];
-  let pipelineType = 'direct';
+  let contextBlock = '';
 
-  if (toolName && searchQuery) {
-    if (toolName === 'searchDocuments') {
-      pipelineType = 'rag';
-      onStream('stage', 'rag');
+  if (route === 'rag') {
+    onStream('stage', 'rag');
+    const docResult = await searchDocuments(userMessage);
+
+    if (docResult.success && docResult.results.length > 0) {
+      const topScore = docResult.results[0].score;
+      console.log(`[RAG] Top score: ${topScore}`);
+
+      if (topScore >= RAG_RELEVANCE_THRESHOLD) {
+        contextBlock = docResult.context;
+        accumulatedSources = docResult.results.map(r => r.source);
+        pipelineType = 'rag';
+      } else {
+        console.log(`[RAG] Low relevance (${topScore}), falling back to web`);
+        onStream('stage', 'web');
+        const webResult = await searchWeb(userMessage);
+        if (webResult.success) {
+          contextBlock = webResult.context;
+          accumulatedSources = webResult.sources || [];
+          pipelineType = 'web';
+        } else {
+          pipelineType = 'direct';
+        }
+      }
     } else {
-      pipelineType = 'web';
+      console.log('[RAG] No results, falling back to web');
       onStream('stage', 'web');
+      const webResult = await searchWeb(userMessage);
+      if (webResult.success) {
+        contextBlock = webResult.context;
+        accumulatedSources = webResult.sources || [];
+        pipelineType = 'web';
+      } else {
+        pipelineType = 'direct';
+      }
     }
-
-    let toolResult = null;
-    if (toolName === 'searchDocuments') {
-      toolResult = await searchDocuments(searchQuery);
-    } else if (toolName === 'searchWeb' || toolName === 'searchTavily') {
-      toolResult = await searchWeb(searchQuery);
-    }
-
-    if (toolResult && toolResult.success) {
-      finalMessages.push({ role: 'assistant', content: agentResponse });
-      finalMessages.push({
-        role: 'user',
-        content: `TOOL RESULTS:\n${toolResult.context}\n\nNow provide the final answer to the user. Be concise and non-repetitive.`
-      });
-
-      if (toolResult.results) accumulatedSources.push(...toolResult.results.map(r => r.source));
-      if (toolResult.sources) accumulatedSources.push(...toolResult.sources);
+  } else if (route === 'web') {
+    onStream('stage', 'web');
+    const webResult = await searchWeb(userMessage);
+    if (webResult.success) {
+      contextBlock = webResult.context;
+      accumulatedSources = webResult.sources || [];
+      pipelineType = 'web';
     } else {
-      finalMessages.push({ role: 'assistant', content: agentResponse });
-      finalMessages.push({ role: 'user', content: `Tool was unavailable. Answer from your own knowledge.` });
+      pipelineType = 'direct';
     }
-  } else {
-    pipelineType = 'direct';
-    finalMessages.push({ role: 'assistant', content: agentResponse });
   }
 
   onStream('stage', 'generating');
   onStream('pipeline', pipelineType);
   onStream('sources', [...new Set(accumulatedSources)].join(','));
 
-  // Stream the final answer with fallback — try each model until one streams
-  let streamed = false;
-  for (const model of MODELS) {
-    try {
-      console.log(`[STREAM] Trying model: ${model}`);
-      const finalStream = await openai.chat.completions.create({
-        model,
-        messages: [
-          ...finalMessages,
-          {
-            role: 'system',
-            content: "Provide your final answer. ALWAYS use rich markdown. When listing items, ALWAYS format them as a beautiful bulleted (-) or numbered (1.) list with bold key terms, proper headings, and clean newlines. Never write lists as a single paragraph."
-          }
-        ],
-        temperature: 0.5,
-        presence_penalty: 0.4,
-        frequency_penalty: 0.5,
-        stream: true,
-      });
+  const messages = [
+    {
+      role: 'system',
+      content: `You are Clever Chat, a sophisticated AI research partner. ${libraryContext}
 
-      for await (const chunk of finalStream) {
-        const delta = chunk.choices[0]?.delta || {};
-        if (delta.content) {
-          onStream('answer', delta.content);
-          streamed = true;
-        }
-      }
-      if (streamed) break;
-    } catch (err) {
-      console.log(`[STREAM ${model}] Error: ${err.message}, trying next`);
-    }
+ALWAYS use rich markdown: bulleted (-) or numbered (1.) lists with bold key terms, proper headings, and clean newlines. Never write lists as a single paragraph. Be concise and helpful. Never repeat the same fact twice.`
+    },
+    ...chatHistory.slice(-6).map(msg => ({
+      role: msg.role === 'user' ? 'user' : 'assistant',
+      content: msg.content
+    })),
+  ];
+
+  if (contextBlock) {
+    messages.push({ role: 'user', content: userMessage });
+    messages.push({
+      role: 'assistant',
+      content: `I found relevant information. Let me synthesize an answer.`
+    });
+    messages.push({
+      role: 'user',
+      content: `Here is the retrieved context:\n\n${contextBlock}\n\nUsing the context above, provide a clear, well-formatted answer to my question: "${userMessage}". Do NOT mention the search process or repeat raw data.`
+    });
+  } else {
+    messages.push({ role: 'user', content: userMessage });
   }
 
-  if (!streamed) {
+  try {
+    const finalStream = await callWithFallback({
+      messages,
+      temperature: 0.5,
+      presence_penalty: 0.4,
+      frequency_penalty: 0.5,
+      stream: true,
+    }, onStream);
+
+    let contentReceived = false;
+    let reasoningBuffer = '';
+    for await (const chunk of finalStream) {
+      const delta = chunk.choices[0]?.delta || {};
+      if (delta.content) {
+        contentReceived = true;
+        onStream('answer', delta.content);
+      } else if (delta.reasoning) {
+        reasoningBuffer += delta.reasoning;
+      }
+    }
+    if (!contentReceived && reasoningBuffer) {
+      const cleaned = reasoningBuffer.replace(/^[\s\S]*?(?=\n\n[A-Z]|\n\nHello|\n\nHi|\n\nHey)/m, '').trim();
+      onStream('answer', cleaned || reasoningBuffer);
+    }
+  } catch (err) {
     onStream('answer', 'Sorry, all AI models are temporarily unavailable. Please try again.');
   }
 }
