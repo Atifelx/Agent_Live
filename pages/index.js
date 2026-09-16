@@ -218,7 +218,7 @@ export default function Home() {
         setMessages([{ role: 'assistant', content: "Neural session restored. How can I help you?" }]);
       }
     } else {
-      setMessages([{ role: 'assistant', content: "Hello! I am Clever Chat. Upload a document to start our deep-dive, or ask me anything from the live web." }]);
+      setMessages([{ role: 'assistant', content: "Hello! I am Clever RAG. Upload a document to start our deep-dive, or ask me anything from the live web." }]);
     }
 
     const savedSessionName = localStorage.getItem('clever_chat_session_name');
@@ -422,7 +422,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 selection:bg-zinc-700 overflow-x-hidden">
       <Head>
-        <title>RAG Demo Chat | Clever Chat</title>
+        <title>RAG Demo Chat | Clever RAG</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
 
@@ -444,7 +444,7 @@ export default function Home() {
               <BrainCircuit className="w-5 h-5 text-zinc-900" />
             </div>
             <div className="flex flex-col">
-              <span className="text-xl md:text-2xl font-bold tracking-tight text-white">Clever Chat</span>
+              <span className="text-xl md:text-2xl font-bold tracking-tight text-white">Clever RAG</span>
               <span className="text-xs text-zinc-500 font-medium tracking-wide hidden sm:block">
                 Build by <a href="https://www.linkedin.com/in/atif-shaikh/" target="_blank" rel="noopener noreferrer" className="text-emerald-500 hover:text-emerald-400 hover:underline transition-colors">Atif Shaikh</a>
               </span>
