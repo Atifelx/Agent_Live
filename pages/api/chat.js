@@ -15,8 +15,40 @@ const openai = new OpenAI({
   },
 });
 
-// Using Gemini 2.0 Flash (ultra-fast and reliable)
-const CHAT_MODEL = 'google/gemini-2.0-flash-001';
+const MODELS = [
+  'nvidia/nemotron-3-super-120b-a12b:free',
+  'nvidia/nemotron-3.5-lightning:free',
+  'poolside/laguna-xs-2.1:free',
+  'thinkingmachines/inkling-small:free',
+];
+
+function extractContent(message) {
+  if (message.content && message.content.trim()) return message.content;
+  if (message.reasoning && message.reasoning.trim()) return message.reasoning;
+  return "";
+}
+
+async function callWithFallback(params, maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    for (const model of MODELS) {
+      try {
+        console.log(`[Attempt ${attempt + 1}] Trying model: ${model}`);
+        const result = await openai.chat.completions.create({ ...params, model });
+        if (params.stream) return result;
+        const msg = result.choices?.[0]?.message;
+        const text = extractContent(msg || {});
+        if (text) {
+          if (!msg.content) msg.content = text;
+          return result;
+        }
+        console.log(`[${model}] Empty content, trying next model`);
+      } catch (err) {
+        console.log(`[${model}] Error: ${err.message}, trying next model`);
+      }
+    }
+  }
+  throw new Error('All models failed after retries');
+}
 
 /**
  * Tool 1: Vector Database Search
@@ -56,7 +88,6 @@ async function searchDocuments(query) {
       score: match.score,
     }));
 
-    // Deduplicate results based on text content to avoid LLM repetition
     const uniqueResults = [];
     const seenTexts = new Set();
     for (const res of results) {
@@ -86,7 +117,6 @@ async function searchWeb(query) {
     console.log('Web Retrieval (Tavily):', query);
     const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY });
 
-    // Perform search with context for LLM
     const searchResult = await tvly.search(query, {
       searchDepth: "advanced",
       maxResults: 5,
@@ -113,10 +143,6 @@ async function searchWeb(query) {
   }
 }
 
-// Using the reliable Nemotron 3 Super (free) for all steps
-const ROUTING_MODEL = CHAT_MODEL;
-
-// Agentic AI: Multi-Tool Facilitator (Recursive Reasoning Loop)
 async function processWithAgent(userMessage, chatHistory = [], activeDocs = [], onStream = () => { }) {
   const libraryContext = activeDocs.length > 0
     ? `Currently active in your SECURE PRIVATE LIBRARY: [${activeDocs.join(', ')}].`
@@ -142,7 +168,7 @@ RULES:
 
   const routingMessages = [
     { role: 'system', content: systemPrompt },
-    ...chatHistory.slice(-6).map(msg => ({ // Only last 6 messages for speed
+    ...chatHistory.slice(-6).map(msg => ({
       role: msg.role === 'user' ? 'user' : 'assistant',
       content: msg.content
     })),
@@ -151,15 +177,18 @@ RULES:
 
   onStream('thought', 'Analyzing request...');
 
-  // Step 1: Decision routing (exactly 1 fast call)
-  const response = await openai.chat.completions.create({
-    model: CHAT_MODEL,
+  const response = await callWithFallback({
     messages: routingMessages,
     temperature: 0.1,
     max_tokens: 256,
   });
 
-  const agentResponse = response.choices[0].message.content || "";
+  let agentResponse = response.choices[0].message.content || "";
+  // Strip reasoning chain-of-thought prefixes from reasoning models
+  const toolIdx = agentResponse.search(/TOOL:\s*\w+/i);
+  if (toolIdx > 0) {
+    agentResponse = agentResponse.substring(toolIdx);
+  }
   console.log(`[ROUTING DECISION]: ${agentResponse}`);
 
   let toolName = null;
@@ -198,49 +227,60 @@ RULES:
       finalMessages.push({ role: 'user', content: `Tool was unavailable. Answer from your own knowledge.` });
     }
   } else {
-    // Answer directly with no tools needed
     finalMessages.push({ role: 'assistant', content: agentResponse });
   }
 
-  // Step 2: Stream the final answer (Guaranteed to execute and close the stream)
   onStream('sources', [...new Set(accumulatedSources)].join(','));
 
-  const finalStream = await openai.chat.completions.create({
-    model: CHAT_MODEL,
-    messages: [
-      ...finalMessages,
-      { 
-        role: 'system', 
-        content: "Provide your final answer. ALWAYS use rich markdown. When listing items, ALWAYS format them as a beautiful bulleted (-) or numbered (1.) list with bold key terms, proper headings, and clean newlines. Never write lists as a single paragraph." 
-      }
-    ],
-    temperature: 0.5,
-    presence_penalty: 0.4,
-    frequency_penalty: 0.5,
-    stream: true,
-  });
+  // Stream the final answer with fallback — try each model until one streams
+  let streamed = false;
+  for (const model of MODELS) {
+    try {
+      console.log(`[STREAM] Trying model: ${model}`);
+      const finalStream = await openai.chat.completions.create({
+        model,
+        messages: [
+          ...finalMessages,
+          {
+            role: 'system',
+            content: "Provide your final answer. ALWAYS use rich markdown. When listing items, ALWAYS format them as a beautiful bulleted (-) or numbered (1.) list with bold key terms, proper headings, and clean newlines. Never write lists as a single paragraph."
+          }
+        ],
+        temperature: 0.5,
+        presence_penalty: 0.4,
+        frequency_penalty: 0.5,
+        stream: true,
+      });
 
-  for await (const chunk of finalStream) {
-    const content = chunk.choices[0]?.delta?.content || "";
-    if (content) {
-      onStream('answer', content);
+      for await (const chunk of finalStream) {
+        const delta = chunk.choices[0]?.delta || {};
+        if (delta.content) {
+          onStream('answer', delta.content);
+          streamed = true;
+        }
+      }
+      if (streamed) break;
+    } catch (err) {
+      console.log(`[STREAM ${model}] Error: ${err.message}, trying next`);
     }
+  }
+
+  if (!streamed) {
+    onStream('answer', 'Sorry, all AI models are temporarily unavailable. Please try again.');
   }
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // Validate required env vars
   if (!process.env.OPENROUTER_API_KEY) {
     return res.status(500).json({ error: 'OPENROUTER_API_KEY is not configured on this server.' });
   }
 
-  // Set headers for streaming — compatible with Vercel serverless
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // Tells Vercel/nginx NOT to buffer the stream
+  res.setHeader('X-Accel-Buffering', 'no');
   res.setHeader('Transfer-Encoding', 'chunked');
 
   try {
@@ -262,7 +302,6 @@ export default async function handler(req, res) {
   }
 }
 
-// Per-route Next.js config: raise body limit and allow large streaming responses
 export const config = {
   api: {
     bodyParser: {
@@ -271,6 +310,3 @@ export const config = {
     responseLimit: false,
   },
 };
-
-// Helper: Delay for smoother AI "Thinking" visibility
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
