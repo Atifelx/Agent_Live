@@ -422,7 +422,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 selection:bg-zinc-700 overflow-x-hidden">
       <Head>
-        <title>Clever Chat | Agentic AI</title>
+        <title>RAG Demo Chat | Clever Chat</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
 
@@ -449,9 +449,12 @@ export default function Home() {
                 Build by <a href="https://www.linkedin.com/in/atif-shaikh/" target="_blank" rel="noopener noreferrer" className="text-emerald-500 hover:text-emerald-400 hover:underline transition-colors">Atif Shaikh</a>
               </span>
             </div>
-            <div className="hidden md:flex ml-4 pl-4 border-l border-zinc-800">
-              <span className="text-[11px] uppercase tracking-[0.15em] font-bold text-white">
-                Agentic AI | RAG | Live Search
+            <div className="hidden md:flex ml-4 pl-4 border-l border-zinc-800 flex-col justify-center">
+              <span className="text-lg uppercase tracking-[0.12em] font-extrabold text-white leading-tight">
+                RAG Demo Chat
+              </span>
+              <span className="text-[10px] text-zinc-400 tracking-wide font-medium">
+                Upload DOC and Chat Realtime
               </span>
             </div>
           </div>
